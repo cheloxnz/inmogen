@@ -33,6 +33,25 @@ class GenerateRequest(BaseModel):
     brand: BrandConfig
     creative_types: list[str] = ["destacado"]
     fmt_name: str = "feed_1x1"
+    selected_photos: list[str] | None = None  # URLs elegidas por el usuario
+
+
+@router.get("/preview")
+async def scrape_preview(url: str, x_user_id: str = Header(...)):
+    """Scrapea la propiedad y devuelve datos + fotos para que el usuario elija."""
+    try:
+        prop = await scrape_property(url)
+        return {
+            "title": prop.title,
+            "price": prop.price,
+            "currency": prop.currency,
+            "location": prop.location,
+            "area_m2": prop.area_m2,
+            "rooms": prop.rooms,
+            "photos": prop.photos or [],
+        }
+    except Exception as e:
+        raise HTTPException(400, f"Error al procesar la URL: {e}")
 
 
 @router.post("/")
@@ -126,6 +145,9 @@ async def _process_job(job_id: str, req: GenerateRequest, x_user_id: str):
 
         await update({"status": "scraping"})
         prop = await scrape_property(req.property_url)
+        # Si el usuario eligió fotos específicas, reemplazar las del scraper
+        if req.selected_photos:
+            prop.photos = req.selected_photos
         await update({"status": "generating", "property_data": prop.model_dump()})
 
         job_dir = os.path.join(STATIC_DIR, "jobs", job_id)

@@ -9,13 +9,20 @@ export function createApi(userId) {
   })
 }
 
-export async function startGeneration(userId, propertyUrl, brand, creativeTypes = ['destacado'], fmtName = 'feed_1x1') {
+export async function scrapePreview(userId, propertyUrl) {
+  const api = createApi(userId)
+  const { data } = await api.get('/generate/preview', { params: { url: propertyUrl } })
+  return data
+}
+
+export async function startGeneration(userId, propertyUrl, brand, creativeTypes = ['destacado'], fmtName = 'feed_1x1', selectedPhotos = null) {
   const api = createApi(userId)
   const { data } = await api.post('/generate/', {
     property_url: propertyUrl,
     brand,
     creative_types: creativeTypes,
     fmt_name: fmtName,
+    selected_photos: selectedPhotos,
   })
   return data
 }

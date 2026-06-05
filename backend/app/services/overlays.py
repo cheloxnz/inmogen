@@ -169,9 +169,9 @@ def price_str(prop: PropertyData) -> str:
 
 def details_str(prop: PropertyData) -> str:
     parts = []
-    if prop.area_m2:   parts.append(f"{int(prop.area_m2)} m2")
+    if prop.area_m2:   parts.append(f"{int(prop.area_m2)} m²")
     if prop.rooms:     parts.append(f"{prop.rooms} amb.")
-    if prop.bathrooms: parts.append(f"{prop.bathrooms} banos")
+    if prop.bathrooms: parts.append(f"{prop.bathrooms} baños")
     if prop.parking:   parts.append(f"{prop.parking} coch.")
     return "  |  ".join(parts)
 
@@ -241,8 +241,8 @@ def overlay_hook_attack(canvas, logo, brand, prop, w, h):
 
     hooks = [
         ["No vas a encontrar", "esto de nuevo"],
-        ["Tu proxima inversion", "esta aca"],
-        ["Todavia pagando", "alquiler?"],
+        ["Tu próxima inversión", "está acá"],
+        ["¿Todavía pagando", "alquiler?"],
         ["La oportunidad", "que esperabas"],
     ]
     import hashlib
@@ -288,10 +288,10 @@ def overlay_storytelling(canvas, logo, brand, prop, w, h):
     draw_logo_agency(canvas, logo, brand, w, h, b, side="left")
 
     narratives = [
-        ["Imagina tu manana", "aca adentro."],
-        ["Asi se ve tu nuevo", "estilo de vida."],
+        ["Imaginá tu mañana", "acá adentro."],
+        ["Así se ve tu nuevo", "estilo de vida."],
         ["El lugar donde", "todo empieza."],
-        ["Tu hogar ideal", "te esta esperando."],
+        ["Tu hogar ideal", "te está esperando."],
     ]
     import hashlib
     idx = int(hashlib.md5((prop.location or "x").encode()).hexdigest(), 16) % len(narratives)
@@ -342,7 +342,7 @@ def overlay_social_proof(canvas, logo, brand, prop, w, h):
     draw_logo_agency(canvas, logo, brand, w, h, b, side="left")
 
     max_text_w = w - PAD * 2
-    trust_lines = ["Mas de 500 familias", "encontraron su hogar con nosotros"]
+    trust_lines = ["Más de 500 familias", "encontraron su hogar con nosotros"]
     font_trust = load_font(int(b * 0.050), bold=True)
     ty = int(h * 0.26)
     for line in trust_lines:
@@ -395,10 +395,10 @@ def overlay_faq(canvas, logo, brand, prop, w, h):
     draw_logo_agency(canvas, logo, brand, w, h, b, side="left")
 
     faqs = [
-        ("Cuanto cuesta?",       price_str(prop)),
-        ("Cuantos ambientes?",   str(prop.rooms) if prop.rooms else "Consultar"),
-        ("Acepta credito?",      "Consulta con nosotros"),
-        ("Donde queda?",         (prop.location or "Consultar")[:38]),
+        ("¿Cuánto cuesta?",      price_str(prop)),
+        ("¿Cuántos ambientes?",  str(prop.rooms) if prop.rooms else "Consultar"),
+        ("¿Acepta crédito?",     "Consultá con nosotros"),
+        ("¿Dónde queda?",        (prop.location or "Consultar")[:38]),
     ]
 
     cx1 = int(w * 0.055)
@@ -451,9 +451,9 @@ def overlay_testimonial(canvas, logo, brand, prop, w, h):
               fill=(*secondary, 175))
 
     quote_lines = [
-        "Encontre exactamente",
+        "Encontré exactamente",
         "lo que buscaba.",
-        "Rapido y sin complicaciones.",
+        "Rápido y sin complicaciones.",
     ]
     font_quote = load_font(int(b * 0.044))
     qy = int(h * 0.30)
@@ -463,7 +463,7 @@ def overlay_testimonial(canvas, logo, brand, prop, w, h):
         qy += int(b * 0.060)
 
     font_client = load_font(int(b * 0.026))
-    draw.text((PAD + 20, qy + int(b * 0.015)), "- Cliente satisfecho",
+    draw.text((PAD + 20, qy + int(b * 0.015)), "— Cliente satisfecho",
               font=font_client, fill=(*secondary, 230))
     qy += int(b * 0.060)
 
