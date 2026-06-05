@@ -3,11 +3,12 @@ from pydantic import BaseModel
 from datetime import datetime
 from bson import ObjectId
 import zipfile
+import httpx
 from io import BytesIO
 from app.core.database import get_db
+from app.core.config import settings
 from app.services.scraper import scrape_property
 from app.services.image_generator import generate_creatives
-from app.services.storage import upload_creative, upload_zip
 from app.models.brand import BrandConfig
 
 router = APIRouter(prefix="/generate", tags=["generate"])
@@ -26,7 +27,6 @@ async def start_generation(
 ):
     db = get_db()
 
-    # Verificar créditos
     user = await db.users.find_one({"clerk_id": x_user_id})
     if not user or user.get("credits", 0) < 1:
         raise HTTPException(402, "Sin créditos disponibles")
@@ -71,32 +71,24 @@ async def _process_job(job_id: str, req: GenerateRequest, x_user_id: str):
         prop = await scrape_property(req.property_url)
 
         await update({"status": "generating", "property_data": prop.model_dump()})
+
+        # Pillow genera bytes directamente
         creatives = await generate_creatives(prop, req.brand)
 
-        from app.core.config import settings
         import base64
-
         urls = []
         for fmt_name, img_bytes in creatives.items():
-            if settings.CLOUDINARY_API_KEY:
-                url = await upload_creative(img_bytes, f"{job_id}_{fmt_name}")
-            else:
-                # Sin Cloudinary: embeber como data URL
-                b64 = base64.b64encode(img_bytes).decode()
-                url = f"data:image/jpeg;base64,{b64}"
-            urls.append(url)
+            b64 = base64.b64encode(img_bytes).decode()
+            urls.append(f"data:image/jpeg;base64,{b64}")
 
-        # Empaquetar ZIP
+        # ZIP
         zip_buf = BytesIO()
         with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for fmt_name, img_bytes in creatives.items():
                 zf.writestr(f"{fmt_name}.jpg", img_bytes)
 
-        if settings.CLOUDINARY_API_KEY:
-            zip_url = await upload_zip(zip_buf.getvalue(), f"{job_id}_pack")
-        else:
-            b64z = base64.b64encode(zip_buf.getvalue()).decode()
-            zip_url = f"data:application/zip;base64,{b64z}"
+        b64z = base64.b64encode(zip_buf.getvalue()).decode()
+        zip_url = f"data:application/zip;base64,{b64z}"
 
         # Descontar crédito
         await db.users.update_one({"clerk_id": x_user_id}, {"$inc": {"credits": -1}})
