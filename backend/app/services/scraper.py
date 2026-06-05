@@ -24,7 +24,7 @@ async def scrape_property(url: str) -> PropertyData:
 async def _scrape_with_apify_browser(url: str, portal: str) -> PropertyData:
     """Usa apify/web-scraper (browser headless) para bypassear bloqueos."""
     client = ApifyClient(settings.APIFY_TOKEN)
-    run = client.actor("apify/web-scraper").call(run_input={
+    actor_run = client.actor("apify/web-scraper").call(run_input={
         "startUrls": [{"url": url}],
         "maxRequestsPerCrawl": 1,
         "pageFunction": """async function pageFunction({ page, request }) {
@@ -38,9 +38,9 @@ async def _scrape_with_apify_browser(url: str, portal: str) -> PropertyData:
                 imgs.map(i => i.src || i.dataset.src || '').filter(s => s.startsWith('http') && (s.includes('foto') || s.includes('cdn') || s.includes('img') || s.includes('media'))).slice(0, 10)
             );
             const bodyText = await page.evaluate(() => document.body.innerText);
-            const m2Match = bodyText.match(/(\d+)\s*m²/i);
-            const ambMatch = bodyText.match(/(\d+)\s*(amb|ambientes)/i);
-            const banoMatch = bodyText.match(/(\d+)\s*(baño|banos)/i);
+            const m2Match = bodyText.match(/(\\d+)\\s*m²/i);
+            const ambMatch = bodyText.match(/(\\d+)\\s*(amb|ambientes)/i);
+            const banoMatch = bodyText.match(/(\\d+)\\s*(ba[ñn]o)/i);
             return {
                 title,
                 price,
@@ -52,7 +52,10 @@ async def _scrape_with_apify_browser(url: str, portal: str) -> PropertyData:
             };
         }"""
     })
-    items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
+    dataset_id = actor_run.get("defaultDatasetId") if isinstance(actor_run, dict) else getattr(actor_run, "default_dataset_id", None) or getattr(actor_run, "defaultDatasetId", None)
+    if not dataset_id:
+        raise ValueError("Apify no retornó dataset ID")
+    items = list(client.dataset(dataset_id).iterate_items())
     if not items:
         raise ValueError(f"No se pudo extraer datos de {url}")
     raw = items[0]
