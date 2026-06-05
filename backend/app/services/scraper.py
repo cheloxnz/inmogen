@@ -27,8 +27,7 @@ async def _fetch_with_scraperapi(url: str) -> str:
         f"https://api.scraperapi.com"
         f"?api_key={settings.SCRAPERAPI_KEY}"
         f"&url={quote_plus(url)}"
-        f"&render=true"          # JS rendering
-        f"&country_code=ar"      # IP Argentina para Zonaprop
+        f"&country_code=ar"
     )
     async with httpx.AsyncClient(timeout=60) as client:
         r = await client.get(api_url)
