@@ -4,7 +4,7 @@ motor==3.6.0
 pydantic==2.9.2
 pydantic-settings==2.6.0
 python-multipart==0.0.12
-httpx==0.28.0
+httpx>=0.28.1,<0.29.0
 Pillow==11.0.0
 cairosvg==2.7.1
 apify-client==1.8.0
