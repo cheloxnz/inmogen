@@ -127,15 +127,19 @@ async def generate_backgrounds(
     if not brand.gemini_api_key:
         raise ValueError("Configurá tu API Key de Gemini en 'Mi Marca'.")
 
-    photo_urls = (prop.photos or [])[:2]
+    photo_urls = (prop.photos or [])[:7]
     photo_b64s = await asyncio.gather(*[_fetch_photo_b64(u) for u in photo_urls])
     photo_b64s = [p for p in photo_b64s if p]
-    main_photo = photo_b64s[0] if photo_b64s else None
 
     async with httpx.AsyncClient() as client:
         tasks = {
-            ct: _generate_bg(client, brand.gemini_api_key, build_bg_prompt(ct, fmt_name), main_photo)
-            for ct in creative_types
+            ct: _generate_bg(
+                client,
+                brand.gemini_api_key,
+                build_bg_prompt(ct, fmt_name),
+                photo_b64s[i % len(photo_b64s)] if photo_b64s else None,
+            )
+            for i, ct in enumerate(creative_types)
         }
         results_raw = await asyncio.gather(*tasks.values(), return_exceptions=True)
 
