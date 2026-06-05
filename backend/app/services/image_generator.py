@@ -99,7 +99,7 @@ def build_creative(
         canvas = crop_center(bg.convert("RGBA"), w, h)
         # Darkener leve para que el texto sea legible
         enhancer = ImageEnhance.Brightness(canvas.convert("RGB"))
-        canvas = enhancer.enhance(0.75).convert("RGBA")
+        canvas = enhancer.enhance(0.88).convert("RGBA")
     else:
         canvas = Image.new("RGBA", (w, h), (*primary, 255))
 
@@ -211,24 +211,38 @@ def build_creative(
 
 
 async def generate_creatives(prop: PropertyData, brand: BrandConfig) -> dict[str, bytes]:
-    # Descargar fotos en paralelo
-    photo_tasks = [fetch_image(url) for url in (prop.photos or [])[:3]]
-    logo_task = fetch_image(brand.logo_url) if brand.logo_url else asyncio.coroutine(lambda: None)()
+    # Descargar hasta 6 fotos + logo en paralelo
+    photo_urls = (prop.photos or [])[:6]
+    tasks = [fetch_image(url) for url in photo_urls]
+    if brand.logo_url:
+        tasks.append(fetch_image(brand.logo_url))
 
-    all_results = await asyncio.gather(*photo_tasks, fetch_image(brand.logo_url) if brand.logo_url else asyncio.sleep(0))
+    all_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    photos = [r for r in all_results[:-1] if r is not None]
-    logo = all_results[-1] if isinstance(all_results[-1], Image.Image) else None
+    photos = [r for r in all_results[:len(photo_urls)] if isinstance(r, Image.Image)]
+    logo = all_results[len(photo_urls)] if brand.logo_url and isinstance(all_results[-1], Image.Image) else None
 
-    main_photo = photos[0] if photos else None
-    second_photo = photos[1] if len(photos) > 1 else main_photo
+    # Asignar foto distinta a cada formato
+    def get_photo(idx: int) -> Image.Image | None:
+        if not photos:
+            return None
+        return photos[idx % len(photos)]
+
+    format_photo_idx = {
+        "feed_1x1":    0,
+        "story_9x16":  1,
+        "banner_16x9": 2,
+        "carousel_1":  0,
+        "carousel_2":  1,
+        "whatsapp":    2,
+    }
 
     results = {}
     for fmt_name, (fw, fh) in FORMATS.items():
-        bg = second_photo if "carousel_2" in fmt_name else main_photo
+        bg = get_photo(format_photo_idx.get(fmt_name, 0))
         creative = build_creative(bg, logo, brand, prop, fw, fh)
         buf = BytesIO()
-        creative.save(buf, format="JPEG", quality=93, optimize=True)
+        creative.save(buf, format="JPEG", quality=95, optimize=True)
         results[fmt_name] = buf.getvalue()
 
     return results

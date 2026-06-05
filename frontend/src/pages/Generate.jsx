@@ -109,18 +109,29 @@ export default function Generate() {
             <p className="text-red-400 text-sm">{job.error}</p>
           )}
 
-          {job.status === 'done' && (
+          {/* Mostrar creativos progresivamente mientras genera */}
+          {(job.creatives?.length > 0) && (
             <>
               <div className="grid grid-cols-3 gap-3 mb-5">
-                {job.creatives?.map((url, i) => (
-                  <img key={i} src={url} alt={`Creativo ${i + 1}`}
-                    className="rounded-lg aspect-square object-cover border border-gray-700" />
+                {job.creatives.map((url, i) => (
+                  <div key={i} className="relative rounded-lg overflow-hidden border border-gray-700 aspect-square">
+                    <img src={url} alt={`Creativo ${i + 1}`} className="w-full h-full object-cover" />
+                    <div className="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
+                      {i + 1}/6
+                    </div>
+                  </div>
+                ))}
+                {/* Placeholders para los que faltan */}
+                {job.status !== 'done' && Array.from({length: 6 - job.creatives.length}).map((_, i) => (
+                  <div key={`ph-${i}`} className="rounded-lg aspect-square bg-gray-800 border border-gray-700 flex items-center justify-center">
+                    <Loader2 size={20} className="text-gray-600 animate-spin" />
+                  </div>
                 ))}
               </div>
-              {job.zip_url && (
+              {job.status === 'done' && job.zip_url && (
                 <a
                   href={job.zip_url}
-                  download
+                  download="creativos.zip"
                   className="flex items-center justify-center gap-2 w-full py-3 bg-yellow-400 text-gray-900 font-semibold rounded-xl hover:bg-yellow-300 transition-colors"
                 >
                   <Download size={18} />
