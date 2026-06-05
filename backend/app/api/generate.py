@@ -46,7 +46,7 @@ async def start_generation(
     job_id = str(result.inserted_id)
 
     background_tasks.add_task(_process_job, job_id, req)
-    return {"job_id": job_id, "status": "pending"}
+    return {"id": job_id, "job_id": job_id, "status": "pending"}
 
 
 @router.get("/{job_id}")
