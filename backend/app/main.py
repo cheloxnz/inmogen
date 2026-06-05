@@ -18,7 +18,11 @@ app = FastAPI(title="InmoGen API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://inmogen.app", "http://localhost:5173"],
+    allow_origins=[
+        "https://inmogen-ia.com",
+        "https://www.inmogen-ia.com",
+        "http://localhost:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
