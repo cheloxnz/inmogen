@@ -22,14 +22,14 @@ def detect_portal(url: str) -> str:
 
 
 async def _fetch_with_scraperapi(url: str) -> str:
-    """Descarga HTML usando ScraperAPI para bypassear anti-bot."""
     api_url = (
         f"https://api.scraperapi.com"
         f"?api_key={settings.SCRAPERAPI_KEY}"
         f"&url={quote_plus(url)}"
         f"&country_code=ar"
+        f"&render=true"
     )
-    async with httpx.AsyncClient(timeout=60) as client:
+    async with httpx.AsyncClient(timeout=90) as client:
         r = await client.get(api_url)
         r.raise_for_status()
     return r.text
@@ -39,10 +39,89 @@ async def scrape_property(url: str) -> PropertyData:
     portal = detect_portal(url)
     html = await _fetch_with_scraperapi(url)
     soup = BeautifulSoup(html, "lxml")
-    return _parse_property(soup, url, portal)
+    return _parse_property(soup, html, url, portal)
 
 
-def _parse_property(soup: BeautifulSoup, url: str, portal: str) -> PropertyData:
+def _extract_photos_from_json(html: str) -> list[str]:
+    """Extrae fotos de JSON embedido en el HTML (Next.js, JSON-LD, etc.)."""
+    photos = []
+
+    # 1. Buscar __NEXT_DATA__ (Zonaprop, Argenprop usan Next.js)
+    m = re.search(r'<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
+    if m:
+        try:
+            data = json.loads(m.group(1))
+            _walk_json_for_photos(data, photos)
+        except Exception:
+            pass
+
+    # 2. Buscar window.__INITIAL_STATE__ o similar
+    for pattern in [
+        r'window\.__INITIAL_STATE__\s*=\s*({.*?});',
+        r'window\.__LISTING_STORE__\s*=\s*({.*?});',
+        r'window\.__DATA__\s*=\s*({.*?});',
+    ]:
+        m = re.search(pattern, html, re.S)
+        if m:
+            try:
+                data = json.loads(m.group(1))
+                _walk_json_for_photos(data, photos)
+            except Exception:
+                pass
+
+    # 3. JSON-LD
+    for script in re.findall(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', html, re.S):
+        try:
+            data = json.loads(script)
+            _walk_json_for_photos(data, photos)
+        except Exception:
+            pass
+
+    # 4. URLs de imágenes sueltas en el HTML (fallback)
+    for url in re.findall(r'https?://[^\s"\'<>]+\.(?:jpg|jpeg|png|webp)(?:\?[^\s"\'<>]*)?', html, re.I):
+        if _is_property_photo(url) and url not in photos:
+            photos.append(url)
+
+    return list(dict.fromkeys(photos))  # deduplicate preserving order
+
+
+def _walk_json_for_photos(obj, photos: list, depth: int = 0):
+    """Recorre recursivamente un JSON buscando URLs de fotos."""
+    if depth > 12:
+        return
+    if isinstance(obj, str):
+        if obj.startswith("http") and _is_property_photo(obj) and obj not in photos:
+            photos.append(obj)
+    elif isinstance(obj, list):
+        for item in obj:
+            _walk_json_for_photos(item, photos, depth + 1)
+    elif isinstance(obj, dict):
+        # Claves que típicamente contienen fotos
+        photo_keys = {"url", "src", "href", "image", "photo", "foto", "thumbnail",
+                      "original", "large", "full", "highRes", "mediumRes", "lowRes",
+                      "location", "source", "file", "uri"}
+        for k, v in obj.items():
+            if k.lower() in photo_keys or "image" in k.lower() or "photo" in k.lower() or "foto" in k.lower():
+                _walk_json_for_photos(v, photos, depth + 1)
+            else:
+                _walk_json_for_photos(v, photos, depth + 1)
+
+
+def _is_property_photo(url: str) -> bool:
+    url_lower = url.lower()
+    # Excluir logos, iconos, mapas, etc.
+    bad = ["logo", "icon", "avatar", "banner", "map", "mapa", "sprite", "pixel",
+           "tracking", "analytics", "facebook", "twitter", "whatsapp", "placeholder",
+           "1x1", "blank", "loading", "favicon"]
+    if any(b in url_lower for b in bad):
+        return False
+    # Debe parecer una imagen de propiedad
+    good = ["foto", "photo", "cdn", "media", "img", "image", "picture", "listing",
+            "propiedad", "property", "inmueble", "real-estate", "zonaprop", "argenprop"]
+    return any(g in url_lower for g in good)
+
+
+def _parse_property(soup: BeautifulSoup, html: str, url: str, portal: str) -> PropertyData:
     # --- Título ---
     title = ""
     for sel in ["h1", "[class*=title]", "[class*=titulo]"]:
@@ -68,9 +147,10 @@ def _parse_property(soup: BeautifulSoup, url: str, portal: str) -> PropertyData:
 
     # --- Moneda ---
     currency = "USD"
-    if "$" in (soup.find(class_=re.compile(r"price|precio", re.I)) or BeautifulSoup("", "lxml")).get_text():
+    price_el = soup.find(class_=re.compile(r"price|precio", re.I))
+    if price_el and "$" in price_el.get_text():
         currency = "ARS" if "zonaprop" in portal or "argenprop" in portal else "USD"
-    if "USD" in html_upper(soup):
+    if "USD" in soup.get_text().upper():
         currency = "USD"
 
     # --- Ubicación ---
@@ -84,20 +164,19 @@ def _parse_property(soup: BeautifulSoup, url: str, portal: str) -> PropertyData:
             location = el.get_text(strip=True)
             break
 
-    # --- Fotos ---
-    photos = []
-    for img in soup.find_all("img"):
-        src = img.get("src") or img.get("data-src") or img.get("data-lazy-src") or ""
-        if (
-            src.startswith("http")
-            and any(k in src.lower() for k in ["foto", "photo", "cdn", "media", "img", "image"])
-            and src not in photos
-            and not any(k in src.lower() for k in ["logo", "icon", "avatar", "banner"])
-        ):
-            photos.append(src)
-    photos = photos[:10]
+    # --- Fotos: primero JSON embedido, luego <img> tags ---
+    photos = _extract_photos_from_json(html)
 
-    # --- Atributos desde texto del body ---
+    # Fallback: <img> tags
+    if len(photos) < 3:
+        for img in soup.find_all("img"):
+            src = img.get("src") or img.get("data-src") or img.get("data-lazy-src") or ""
+            if src.startswith("http") and _is_property_photo(src) and src not in photos:
+                photos.append(src)
+
+    photos = photos[:40]  # hasta 40 fotos
+
+    # --- Atributos numéricos ---
     body_text = soup.get_text(" ", strip=True)
 
     area = None
@@ -134,7 +213,3 @@ def _parse_property(soup: BeautifulSoup, url: str, portal: str) -> PropertyData:
         portal=portal,
         scraped_at=datetime.utcnow(),
     )
-
-
-def html_upper(soup: BeautifulSoup) -> str:
-    return soup.get_text().upper()
