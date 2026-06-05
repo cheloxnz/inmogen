@@ -1,10 +1,11 @@
-import base64
+import os
 import zipfile
 from datetime import datetime
 from io import BytesIO
 
 from bson import ObjectId
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.core.database import get_db
@@ -14,6 +15,9 @@ from app.services.gemini import generate_creatives as generate_creatives_gemini
 from app.services.scraper import scrape_property
 
 router = APIRouter(prefix="/generate", tags=["generate"])
+
+STATIC_DIR = os.environ.get("STATIC_DIR", "/opt/inmogen/backend/static")
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.inmogen-ia.com")
 
 
 class GenerateRequest(BaseModel):
@@ -59,6 +63,30 @@ async def get_job_status(job_id: str, x_user_id: str = Header(...)):
     return job
 
 
+@router.get("/{job_id}/zip")
+async def download_zip(job_id: str):
+    db = get_db()
+    job = await db.jobs.find_one({"_id": ObjectId(job_id)})
+    if not job:
+        raise HTTPException(404, "Job no encontrado")
+    if job.get("status") != "done":
+        raise HTTPException(400, "Job no completado")
+
+    job_dir = os.path.join(STATIC_DIR, "jobs", job_id)
+    zip_buf = BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fmt_name in job.get("creatives_fmt", []):
+            img_path = os.path.join(job_dir, f"{fmt_name}.jpg")
+            if os.path.exists(img_path):
+                zf.write(img_path, f"{fmt_name}.jpg")
+    zip_buf.seek(0)
+    return StreamingResponse(
+        zip_buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=inmogen_{job_id}.zip"},
+    )
+
+
 async def _process_job(job_id: str, req: GenerateRequest, x_user_id: str):
     db = get_db()
     oid = ObjectId(job_id)
@@ -72,32 +100,35 @@ async def _process_job(job_id: str, req: GenerateRequest, x_user_id: str):
 
         await update({"status": "generating", "property_data": prop.model_dump()})
 
-        # Gemini si el cliente tiene key, sino Pillow
         if req.brand.gemini_api_key:
             creatives_dict = await generate_creatives_gemini(prop, req.brand)
         else:
             creatives_dict = await generate_creatives_pillow(prop, req.brand)
 
-        # Guardar cada creativo progresivamente
-        urls = []
-        zip_buf = BytesIO()
-        zf = zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED)
+        job_dir = os.path.join(STATIC_DIR, "jobs", job_id)
+        os.makedirs(job_dir, exist_ok=True)
 
+        urls = []
+        fmt_names = []
         for fmt_name, img_bytes in creatives_dict.items():
-            zf.writestr(f"{fmt_name}.jpg", img_bytes)
-            b64 = base64.b64encode(img_bytes).decode()
-            urls.append(f"data:image/jpeg;base64,{b64}")
+            img_path = os.path.join(job_dir, f"{fmt_name}.jpg")
+            with open(img_path, "wb") as f:
+                f.write(img_bytes)
+            url = f"{API_BASE_URL}/static/jobs/{job_id}/{fmt_name}.jpg"
+            urls.append(url)
+            fmt_names.append(fmt_name)
             await db.jobs.update_one(
                 {"_id": oid},
-                {"$set": {"creatives": urls, "updated_at": datetime.utcnow()}}
+                {"$set": {"creatives": urls, "creatives_fmt": fmt_names, "updated_at": datetime.utcnow()}}
             )
 
-        zf.close()
-        b64z = base64.b64encode(zip_buf.getvalue()).decode()
-        zip_url = f"data:application/zip;base64,{b64z}"
-
         await db.users.update_one({"clerk_id": x_user_id}, {"$inc": {"credits": -1}})
-        await update({"status": "done", "creatives": urls, "zip_url": zip_url})
+        await update({
+            "status": "done",
+            "creatives": urls,
+            "creatives_fmt": fmt_names,
+            "zip_url": f"{API_BASE_URL}/generate/{job_id}/zip",
+        })
 
     except Exception as e:
         await update({"status": "error", "error": str(e)})
