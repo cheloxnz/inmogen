@@ -1,0 +1,12 @@
+version: "3.9"
+services:
+  inmogen-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: inmogen-backend
+    restart: unless-stopped
+    ports:
+      - "8003:8003"
+    env_file:
+      - .env
