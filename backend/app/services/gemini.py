@@ -9,7 +9,7 @@ from io import BytesIO
 from app.models.property import PropertyData
 from app.models.brand import BrandConfig
 
-GEMINI_IMAGE_MODEL = "gemini-2.0-flash-preview-image-generation"
+GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image"
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
 FORMATS = {
