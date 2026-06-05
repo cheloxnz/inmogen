@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     CLERK_SECRET_KEY: str
     CLERK_PUBLISHABLE_KEY: str = ""
 
+    API_BASE_URL: str = "https://api.inmogen-ia.com"
+    STATIC_DIR: str = "/opt/inmogen/backend/static"
+
     class Config:
         env_file = ".env"
 
