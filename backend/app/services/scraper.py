@@ -6,11 +6,11 @@ import re
 
 
 PORTAL_ACTORS = {
-    "zonaprop.com.ar": "dtrungtin/zonaprop-scraper",
+    "zonaprop.com.ar": "autoscraping/zonaprop-by-url",
     "inmuebles24.com": "misceres/inmuebles24-scraper",
     "idealista.com": "misceres/idealista-scraper",
     "fotocasa.es": "misceres/fotocasa-scraper",
-    "argenprop.com": "dtrungtin/argenprop-scraper",
+    "argenprop.com": "autoscraping/zonaprop-by-url",
 }
 
 
@@ -32,7 +32,7 @@ async def scrape_property(url: str) -> PropertyData:
     portal = detect_portal(url)
 
     run_input = {
-        "startUrls": [{"url": url}],
+        "url": url,
         "maxItems": 1,
     }
 
