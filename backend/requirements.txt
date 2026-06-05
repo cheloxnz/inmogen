@@ -1,0 +1,15 @@
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+motor==3.6.0
+pydantic==2.9.2
+pydantic-settings==2.6.0
+python-multipart==0.0.12
+httpx==0.28.0
+Pillow==11.0.0
+cairosvg==2.7.1
+apify-client==1.8.0
+stripe==11.2.0
+clerk-backend-api==1.6.0
+python-jose[cryptography]==3.3.0
+cloudinary==1.41.0
+aiofiles==24.1.0
