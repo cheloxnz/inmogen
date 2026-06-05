@@ -9,13 +9,13 @@ export function createApi(userId) {
   })
 }
 
-export async function startGeneration(userId, propertyUrl, brand, creativeType = 'destacado', formats = null) {
+export async function startGeneration(userId, propertyUrl, brand, creativeTypes = ['destacado'], fmtName = 'feed_1x1') {
   const api = createApi(userId)
   const { data } = await api.post('/generate/', {
     property_url: propertyUrl,
     brand,
-    creative_type: creativeType,
-    formats,
+    creative_types: creativeTypes,
+    fmt_name: fmtName,
   })
   return data
 }

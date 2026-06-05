@@ -10,25 +10,29 @@ from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.models.brand import BrandConfig
-from app.services.image_generator import generate_creatives as generate_creatives_pillow
-from app.services.gemini import generate_creatives as generate_creatives_gemini
+from app.services.image_generator import generate_creatives as pillow_creatives
+from app.services.gemini import generate_backgrounds
+from app.services.overlays import apply_overlay, FORMATS
 from app.services.scraper import scrape_property
+
+import httpx
+import asyncio
 
 router = APIRouter(prefix="/generate", tags=["generate"])
 
 STATIC_DIR = os.environ.get("STATIC_DIR", "/opt/inmogen/backend/static")
 API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.inmogen-ia.com")
 
-
-VALID_FORMATS = {"feed_1x1", "story_9x16", "banner_16x9", "carousel_1", "carousel_2", "whatsapp"}
-VALID_TYPES = {"destacado", "infografia", "hook_attack", "storytelling", "social_proof", "faq", "testimonial"}
+VALID_FORMATS = set(FORMATS.keys())
+VALID_TYPES = {"destacado", "infografia", "hook_attack", "storytelling",
+               "social_proof", "faq", "testimonial"}
 
 
 class GenerateRequest(BaseModel):
     property_url: str
     brand: BrandConfig
-    creative_type: str = "destacado"
-    formats: list[str] | None = None
+    creative_types: list[str] = ["destacado"]
+    fmt_name: str = "feed_1x1"
 
 
 @router.post("/")
@@ -48,6 +52,7 @@ async def start_generation(
         "brand": req.brand.model_dump(),
         "status": "pending",
         "creatives": [],
+        "creatives_fmt": [],
         "zip_url": None,
         "error": None,
         "created_at": datetime.utcnow(),
@@ -81,10 +86,10 @@ async def download_zip(job_id: str):
     job_dir = os.path.join(STATIC_DIR, "jobs", job_id)
     zip_buf = BytesIO()
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for fmt_name in job.get("creatives_fmt", []):
-            img_path = os.path.join(job_dir, f"{fmt_name}.jpg")
+        for entry in job.get("creatives_fmt", []):
+            img_path = os.path.join(job_dir, f"{entry}.jpg")
             if os.path.exists(img_path):
-                zf.write(img_path, f"{fmt_name}.jpg")
+                zf.write(img_path, f"{entry}.jpg")
     zip_buf.seek(0)
     return StreamingResponse(
         zip_buf,
@@ -93,7 +98,22 @@ async def download_zip(job_id: str):
     )
 
 
+async def _fetch_logo_bytes(url: str) -> bytes | None:
+    if not url:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            r = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            r.raise_for_status()
+            return r.content
+    except Exception:
+        return None
+
+
 async def _process_job(job_id: str, req: GenerateRequest, x_user_id: str):
+    from PIL import Image
+    from io import BytesIO as BIO
+
     db = get_db()
     oid = ObjectId(job_id)
 
@@ -101,41 +121,57 @@ async def _process_job(job_id: str, req: GenerateRequest, x_user_id: str):
         await db.jobs.update_one({"_id": oid}, {"$set": {**data, "updated_at": datetime.utcnow()}})
 
     try:
+        selected_types = [t for t in req.creative_types if t in VALID_TYPES] or ["destacado"]
+        fmt = req.fmt_name if req.fmt_name in VALID_FORMATS else "feed_1x1"
+
         await update({"status": "scraping"})
         prop = await scrape_property(req.property_url)
-
         await update({"status": "generating", "property_data": prop.model_dump()})
-
-        selected_formats = [f for f in (req.formats or list(VALID_FORMATS)) if f in VALID_FORMATS] or None
-        creative_type = req.creative_type if req.creative_type in VALID_TYPES else "destacado"
-
-        if req.brand.gemini_api_key:
-            creatives_dict = await generate_creatives_gemini(prop, req.brand, creative_type, selected_formats)
-        else:
-            creatives_dict = await generate_creatives_pillow(prop, req.brand, creative_type, selected_formats)
 
         job_dir = os.path.join(STATIC_DIR, "jobs", job_id)
         os.makedirs(job_dir, exist_ok=True)
 
+        # Cargar logo como PIL Image para los overlays
+        logo_img = None
+        if req.brand.logo_url:
+            logo_bytes = await _fetch_logo_bytes(req.brand.logo_url)
+            if logo_bytes:
+                try:
+                    logo_img = Image.open(BIO(logo_bytes)).convert("RGBA")
+                except Exception:
+                    pass
+
+        if req.brand.gemini_api_key:
+            # Gemini genera fondos → Pillow superpone texto
+            backgrounds = await generate_backgrounds(prop, req.brand, selected_types, fmt)
+            creatives_dict = {}
+            for ct, bg_bytes in backgrounds.items():
+                creatives_dict[ct] = apply_overlay(bg_bytes, logo_img, req.brand, prop, ct, fmt)
+        else:
+            # Solo Pillow con fotos de la propiedad
+            creatives_dict = await pillow_creatives(prop, req.brand, selected_types, fmt)
+
         urls = []
-        fmt_names = []
-        for fmt_name, img_bytes in creatives_dict.items():
-            img_path = os.path.join(job_dir, f"{fmt_name}.jpg")
+        fmt_entries = []
+        for ct, img_bytes in creatives_dict.items():
+            entry = f"{ct}_{fmt}"
+            img_path = os.path.join(job_dir, f"{entry}.jpg")
             with open(img_path, "wb") as f:
                 f.write(img_bytes)
-            url = f"{API_BASE_URL}/static/jobs/{job_id}/{fmt_name}.jpg"
+            url = f"{API_BASE_URL}/static/jobs/{job_id}/{entry}.jpg"
             urls.append(url)
-            fmt_names.append(fmt_name)
+            fmt_entries.append(entry)
             await db.jobs.update_one(
                 {"_id": oid},
-                {"$set": {"creatives": urls, "creatives_fmt": fmt_names, "updated_at": datetime.utcnow()}}
+                {"$set": {"creatives": urls, "creatives_fmt": fmt_entries,
+                          "updated_at": datetime.utcnow()}}
             )
 
         await db.users.update_one({"clerk_id": x_user_id}, {"$inc": {"credits": -1}})
         await update({
             "status": "done",
             "creatives": urls,
-            "creatives_fmt": fmt_names,
+            "creatives_fmt": fmt_entries,
             "zip_url": f"{API_BASE_URL}/generate/{job_id}/zip",
         })
 
