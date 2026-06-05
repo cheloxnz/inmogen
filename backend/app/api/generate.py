@@ -45,7 +45,7 @@ async def start_generation(
     result = await db.jobs.insert_one(job)
     job_id = str(result.inserted_id)
 
-    background_tasks.add_task(_process_job, job_id, req)
+    background_tasks.add_task(_process_job, job_id, req, x_user_id)
     return {"id": job_id, "job_id": job_id, "status": "pending"}
 
 
@@ -59,7 +59,7 @@ async def get_job_status(job_id: str, x_user_id: str = Header(...)):
     return job
 
 
-async def _process_job(job_id: str, req: GenerateRequest):
+async def _process_job(job_id: str, req: GenerateRequest, x_user_id: str):
     db = get_db()
     oid = ObjectId(job_id)
 
@@ -73,9 +73,17 @@ async def _process_job(job_id: str, req: GenerateRequest):
         await update({"status": "generating", "property_data": prop.model_dump()})
         creatives = await generate_creatives(prop, req.brand)
 
+        from app.core.config import settings
+        import base64
+
         urls = []
         for fmt_name, img_bytes in creatives.items():
-            url = await upload_creative(img_bytes, f"{job_id}_{fmt_name}")
+            if settings.CLOUDINARY_API_KEY:
+                url = await upload_creative(img_bytes, f"{job_id}_{fmt_name}")
+            else:
+                # Sin Cloudinary: embeber como data URL
+                b64 = base64.b64encode(img_bytes).decode()
+                url = f"data:image/jpeg;base64,{b64}"
             urls.append(url)
 
         # Empaquetar ZIP
@@ -83,10 +91,15 @@ async def _process_job(job_id: str, req: GenerateRequest):
         with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for fmt_name, img_bytes in creatives.items():
                 zf.writestr(f"{fmt_name}.jpg", img_bytes)
-        zip_url = await upload_zip(zip_buf.getvalue(), f"{job_id}_pack")
+
+        if settings.CLOUDINARY_API_KEY:
+            zip_url = await upload_zip(zip_buf.getvalue(), f"{job_id}_pack")
+        else:
+            b64z = base64.b64encode(zip_buf.getvalue()).decode()
+            zip_url = f"data:application/zip;base64,{b64z}"
 
         # Descontar crédito
-        await db.users.update_one({"clerk_id": req.property_url}, {"$inc": {"credits": -1}})
+        await db.users.update_one({"clerk_id": x_user_id}, {"$inc": {"credits": -1}})
 
         await update({"status": "done", "creatives": urls, "zip_url": zip_url})
     except Exception as e:
