@@ -1,234 +1,141 @@
-from apify_client import ApifyClient
-from app.core.config import settings
-from app.models.property import PropertyData
-from datetime import datetime
 import httpx
-from bs4 import BeautifulSoup
 import json
 import re
+from datetime import datetime
+from urllib.parse import quote_plus
+from bs4 import BeautifulSoup
+
+from app.core.config import settings
+from app.models.property import PropertyData
 
 
 def detect_portal(url: str) -> str:
-    portals = ["zonaprop.com.ar", "inmuebles24.com", "idealista.com", "fotocasa.es", "argenprop.com"]
+    portals = [
+        "zonaprop.com.ar", "argenprop.com", "inmuebles24.com",
+        "idealista.com", "fotocasa.es", "properati.com",
+        "mercadolibre.com", "infocasas.com.uy",
+    ]
     for p in portals:
         if p in url:
             return p
     return "generic"
 
 
+async def _fetch_with_scraperapi(url: str) -> str:
+    """Descarga HTML usando ScraperAPI para bypassear anti-bot."""
+    api_url = (
+        f"https://api.scraperapi.com"
+        f"?api_key={settings.SCRAPERAPI_KEY}"
+        f"&url={quote_plus(url)}"
+        f"&render=true"          # JS rendering
+        f"&country_code=ar"      # IP Argentina para Zonaprop
+    )
+    async with httpx.AsyncClient(timeout=60) as client:
+        r = await client.get(api_url)
+        r.raise_for_status()
+    return r.text
+
+
 async def scrape_property(url: str) -> PropertyData:
     portal = detect_portal(url)
-    return await _scrape_with_apify_browser(url, portal)
+    html = await _fetch_with_scraperapi(url)
+    soup = BeautifulSoup(html, "lxml")
+    return _parse_property(soup, url, portal)
 
 
-async def _scrape_with_apify_browser(url: str, portal: str) -> PropertyData:
-    """Usa apify/web-scraper (browser headless) para bypassear bloqueos."""
-    client = ApifyClient(settings.APIFY_TOKEN)
-    actor_run = client.actor("apify/web-scraper").call(run_input={
-        "startUrls": [{"url": url}],
-        "maxRequestsPerCrawl": 1,
-        "pageFunction": """async function pageFunction({ page, request }) {
-            await page.waitForTimeout(2000);
-            const title = await page.$eval('h1', el => el.innerText.trim()).catch(() => 'Propiedad');
-            const priceEl = await page.$('[class*=price], [class*=precio], [data-qa*=price]');
-            const price = priceEl ? await priceEl.evaluate(el => el.innerText.trim()) : 'Consultar';
-            const locEl = await page.$('[class*=address], [class*=location], [class*=ubicacion], [data-qa*=address]');
-            const location = locEl ? await locEl.evaluate(el => el.innerText.trim()) : '';
-            const photos = await page.$$eval('img', imgs =>
-                imgs.map(i => i.src || i.dataset.src || '').filter(s => s.startsWith('http') && (s.includes('foto') || s.includes('cdn') || s.includes('img') || s.includes('media'))).slice(0, 10)
-            );
-            const bodyText = await page.evaluate(() => document.body.innerText);
-            const m2Match = bodyText.match(/(\\d+)\\s*m²/i);
-            const ambMatch = bodyText.match(/(\\d+)\\s*(amb|ambientes)/i);
-            const banoMatch = bodyText.match(/(\\d+)\\s*(ba[ñn]o)/i);
-            return {
-                title,
-                price,
-                location,
-                photos,
-                area_m2: m2Match ? parseFloat(m2Match[1]) : null,
-                rooms: ambMatch ? parseInt(ambMatch[1]) : null,
-                bathrooms: banoMatch ? parseInt(banoMatch[1]) : null,
-            };
-        }"""
-    })
-    dataset_id = actor_run.get("defaultDatasetId") if isinstance(actor_run, dict) else getattr(actor_run, "default_dataset_id", None) or getattr(actor_run, "defaultDatasetId", None)
-    if not dataset_id:
-        raise ValueError("Apify no retornó dataset ID")
-    items = list(client.dataset(dataset_id).iterate_items())
-    if not items:
-        raise ValueError(f"No se pudo extraer datos de {url}")
-    raw = items[0]
-    price = re.sub(r"[^\d.,]", "", str(raw.get("price", ""))) or "Consultar"
-    return PropertyData(
-        url=url,
-        title=raw.get("title", "Propiedad")[:100],
-        price=price,
-        currency="USD",
-        location=str(raw.get("location", ""))[:100],
-        photos=raw.get("photos", []),
-        area_m2=raw.get("area_m2"),
-        rooms=raw.get("rooms"),
-        bathrooms=raw.get("bathrooms"),
-        portal=portal,
-        scraped_at=datetime.utcnow(),
-    )
+def _parse_property(soup: BeautifulSoup, url: str, portal: str) -> PropertyData:
+    # --- Título ---
+    title = ""
+    for sel in ["h1", "[class*=title]", "[class*=titulo]"]:
+        el = soup.select_one(sel)
+        if el:
+            title = el.get_text(strip=True)
+            break
+    title = title or "Propiedad"
 
-
-async def _scrape_zonaprop(url: str) -> PropertyData:
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept-Language": "es-AR,es;q=0.9",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    }
-    async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers=headers) as client:
-        r = await client.get(url)
-        r.raise_for_status()
-
-    soup = BeautifulSoup(r.text, "html.parser")
-
-    # JSON-LD schema
-    data = {}
-    for tag in soup.find_all("script", type="application/ld+json"):
-        try:
-            obj = json.loads(tag.string)
-            if obj.get("@type") in ("RealEstateListing", "Product", "Residence"):
-                data = obj
+    # --- Precio ---
+    price = "Consultar"
+    for sel in [
+        "[class*=price]", "[class*=precio]",
+        "[data-qa*=price]", "[data-testid*=price]",
+    ]:
+        el = soup.select_one(sel)
+        if el:
+            raw = el.get_text(strip=True)
+            nums = re.sub(r"[^\d]", "", raw)
+            if nums:
+                price = nums
                 break
-        except Exception:
-            pass
 
-    # Título
-    title = (
-        data.get("name")
-        or (soup.find("h1") and soup.find("h1").get_text(strip=True))
-        or "Propiedad"
-    )
+    # --- Moneda ---
+    currency = "USD"
+    if "$" in (soup.find(class_=re.compile(r"price|precio", re.I)) or BeautifulSoup("", "lxml")).get_text():
+        currency = "ARS" if "zonaprop" in portal or "argenprop" in portal else "USD"
+    if "USD" in html_upper(soup):
+        currency = "USD"
 
-    # Precio
-    price_tag = soup.find(class_=re.compile(r"price|precio", re.I))
-    price = price_tag.get_text(strip=True) if price_tag else data.get("price", "Consultar")
-    price = re.sub(r"[^\d.,]", "", str(price)) or "Consultar"
+    # --- Ubicación ---
+    location = ""
+    for sel in [
+        "[class*=address]", "[class*=ubicacion]", "[class*=location]",
+        "[data-qa*=address]", "[data-testid*=location]",
+    ]:
+        el = soup.select_one(sel)
+        if el:
+            location = el.get_text(strip=True)
+            break
 
-    # Ubicación
-    location = (
-        data.get("address", {}).get("streetAddress", "")
-        or (soup.find(class_=re.compile(r"address|ubicacion|location", re.I)) and
-            soup.find(class_=re.compile(r"address|ubicacion|location", re.I)).get_text(strip=True))
-        or ""
-    )
-
-    # Fotos
+    # --- Fotos ---
     photos = []
-    for img in soup.find_all("img", src=re.compile(r"zonaprop|cdn|foto|photo|img", re.I)):
-        src = img.get("src") or img.get("data-src", "")
-        if src and src.startswith("http") and src not in photos:
+    for img in soup.find_all("img"):
+        src = img.get("src") or img.get("data-src") or img.get("data-lazy-src") or ""
+        if (
+            src.startswith("http")
+            and any(k in src.lower() for k in ["foto", "photo", "cdn", "media", "img", "image"])
+            and src not in photos
+            and not any(k in src.lower() for k in ["logo", "icon", "avatar", "banner"])
+        ):
             photos.append(src)
     photos = photos[:10]
 
-    # Atributos (m², ambientes)
+    # --- Atributos desde texto del body ---
+    body_text = soup.get_text(" ", strip=True)
+
     area = None
+    m = re.search(r"(\d+[\.,]?\d*)\s*m²", body_text, re.I)
+    if m:
+        area = float(m.group(1).replace(",", "."))
+
     rooms = None
+    m = re.search(r"(\d+)\s*(amb(?:ientes?)?|cuartos?|dormitorios?|habitaciones?|recámaras?)", body_text, re.I)
+    if m:
+        rooms = int(m.group(1))
+
     bathrooms = None
-    for tag in soup.find_all(class_=re.compile(r"feature|caracteristica|attribute|attr", re.I)):
-        text = tag.get_text(strip=True).lower()
-        m = re.search(r"(\d+)\s*m²", text)
-        if m:
-            area = float(m.group(1))
-        m = re.search(r"(\d+)\s*(amb|cuarto|dormitorio|habitacion)", text)
-        if m:
-            rooms = int(m.group(1))
-        m = re.search(r"(\d+)\s*(baño|bathroom)", text)
-        if m:
-            bathrooms = int(m.group(1))
+    m = re.search(r"(\d+)\s*ba[ñn]os?", body_text, re.I)
+    if m:
+        bathrooms = int(m.group(1))
+
+    parking = None
+    m = re.search(r"(\d+)\s*(cocheras?|garages?|estacionamientos?)", body_text, re.I)
+    if m:
+        parking = int(m.group(1))
 
     return PropertyData(
         url=url,
-        title=title[:100],
+        title=title[:120],
         price=price,
-        currency="USD",
-        location=location[:100],
+        currency=currency,
+        location=location[:120],
         photos=photos,
         area_m2=area,
         rooms=rooms,
         bathrooms=bathrooms,
-        portal="zonaprop.com.ar",
-        scraped_at=datetime.utcnow(),
-    )
-
-
-async def _scrape_apify_generic(url: str, portal: str) -> PropertyData:
-    client = ApifyClient(settings.APIFY_TOKEN)
-    run = client.actor("apify/cheerio-scraper").call(run_input={
-        "startUrls": [{"url": url}],
-        "maxRequestsPerCrawl": 1,
-        "pageFunction": """async function pageFunction({ $, request }) {
-            return {
-                title: $('h1').first().text().trim(),
-                price: $('.price, .precio, [class*=price]').first().text().trim(),
-                location: $('[class*=address], [class*=location], [class*=ubicacion]').first().text().trim(),
-                photos: $('img[src*=foto], img[src*=photo], img[src*=cdn]').map((i, el) => $(el).attr('src')).get().slice(0, 8),
-            };
-        }"""
-    })
-    items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
-    if not items:
-        raise ValueError(f"No se pudo extraer datos de {url}")
-    raw = items[0]
-    return PropertyData(
-        url=url,
-        title=raw.get("title", "Propiedad"),
-        price=re.sub(r"[^\d.,]", "", raw.get("price", "")) or "Consultar",
-        currency="USD",
-        location=raw.get("location", ""),
-        photos=raw.get("photos", []),
+        parking=parking,
         portal=portal,
         scraped_at=datetime.utcnow(),
     )
 
 
-def _normalize(raw: dict, url: str, portal: str) -> PropertyData:
-    """Normaliza la respuesta de distintos actores Apify a PropertyData."""
-    photos = (
-        raw.get("images", [])
-        or raw.get("photos", [])
-        or raw.get("imageUrls", [])
-        or []
-    )
-    if photos and isinstance(photos[0], dict):
-        photos = [p.get("url", p.get("src", "")) for p in photos]
-
-    price_raw = str(raw.get("price", raw.get("priceValue", "Consultar")))
-    currency = raw.get("currency", "USD")
-
-    return PropertyData(
-        url=url,
-        title=raw.get("title", raw.get("name", "Propiedad")),
-        price=price_raw,
-        currency=currency,
-        location=raw.get("address", raw.get("location", raw.get("fullAddress", ""))),
-        neighborhood=raw.get("neighborhood", raw.get("barrio", "")),
-        city=raw.get("city", raw.get("ciudad", "")),
-        description=raw.get("description", "")[:500],
-        area_m2=_parse_float(raw.get("surfaceTotal", raw.get("area", raw.get("m2")))),
-        rooms=_parse_int(raw.get("rooms", raw.get("ambientes", raw.get("bedrooms")))),
-        bathrooms=_parse_int(raw.get("bathrooms", raw.get("banos"))),
-        parking=_parse_int(raw.get("parking", raw.get("garages", raw.get("cocheras")))),
-        photos=photos[:10],
-        portal=portal,
-        scraped_at=datetime.utcnow(),
-    )
-
-
-def _parse_float(val) -> float | None:
-    try:
-        return float(str(val).replace(",", ".").replace(" ", ""))
-    except (TypeError, ValueError):
-        return None
-
-
-def _parse_int(val) -> int | None:
-    try:
-        return int(str(val).split(".")[0])
-    except (TypeError, ValueError):
-        return None
+def html_upper(soup: BeautifulSoup) -> str:
+    return soup.get_text().upper()

@@ -9,9 +9,8 @@ class Settings(BaseSettings):
     MONGODB_URL: str
     MONGODB_DB: str = "inmogen_prod"
 
-    APIFY_TOKEN: str
-    APIFY_ACTOR_ZONAPROP: str = "dtrungtin/zonaprop-scraper"
-    APIFY_ACTOR_IDEALISTA: str = "misceres/idealista-scraper"
+    APIFY_TOKEN: str = ""
+    SCRAPERAPI_KEY: str = ""
 
     CLOUDINARY_CLOUD_NAME: str = ""
     CLOUDINARY_API_KEY: str = ""
