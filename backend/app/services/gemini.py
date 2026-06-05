@@ -70,7 +70,6 @@ async def _generate_one(
     client: httpx.AsyncClient,
     api_key: str,
     prompt: str,
-    aspect_ratio: str,
     photo_b64: str | None,
 ) -> bytes | None:
     """Llama a Gemini image generation y devuelve bytes de la imagen."""
@@ -88,11 +87,7 @@ async def _generate_one(
     payload = {
         "contents": [{"parts": parts}],
         "generationConfig": {
-            "responseModalities": ["IMAGE", "TEXT"],
-            "imageGenerationConfig": {
-                "numberOfImages": 1,
-                "aspectRatio": aspect_ratio,
-            }
+            "responseModalities": ["TEXT", "IMAGE"],
         }
     }
 
@@ -100,7 +95,8 @@ async def _generate_one(
 
     try:
         r = await client.post(url, json=payload, timeout=90)
-        r.raise_for_status()
+        if not r.is_success:
+            raise ValueError(f"Gemini HTTP {r.status_code}: {r.text[:500]}")
         data = r.json()
         # Buscar la parte de imagen en la respuesta
         candidates = data.get("candidates", [])
@@ -111,7 +107,7 @@ async def _generate_one(
                     if img_data:
                         return base64.b64decode(img_data)
     except Exception as e:
-        raise ValueError(f"Gemini error en {aspect_ratio}: {e}")
+        raise ValueError(f"Gemini error: {e}")
     return None
 
 
@@ -153,7 +149,6 @@ async def generate_creatives(prop: PropertyData, brand: BrandConfig) -> dict[str
                 client,
                 brand.gemini_api_key,
                 prompt,
-                fmt_config["aspect_ratio"],
                 photo_b64,
             )
 
