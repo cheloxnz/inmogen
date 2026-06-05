@@ -20,9 +20,15 @@ STATIC_DIR = os.environ.get("STATIC_DIR", "/opt/inmogen/backend/static")
 API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.inmogen-ia.com")
 
 
+VALID_FORMATS = {"feed_1x1", "story_9x16", "banner_16x9", "carousel_1", "carousel_2", "whatsapp"}
+VALID_TYPES = {"destacado", "infografia", "hook_attack", "storytelling", "social_proof", "faq", "testimonial"}
+
+
 class GenerateRequest(BaseModel):
     property_url: str
     brand: BrandConfig
+    creative_type: str = "destacado"
+    formats: list[str] | None = None
 
 
 @router.post("/")
@@ -100,10 +106,13 @@ async def _process_job(job_id: str, req: GenerateRequest, x_user_id: str):
 
         await update({"status": "generating", "property_data": prop.model_dump()})
 
+        selected_formats = [f for f in (req.formats or list(VALID_FORMATS)) if f in VALID_FORMATS] or None
+        creative_type = req.creative_type if req.creative_type in VALID_TYPES else "destacado"
+
         if req.brand.gemini_api_key:
-            creatives_dict = await generate_creatives_gemini(prop, req.brand)
+            creatives_dict = await generate_creatives_gemini(prop, req.brand, creative_type, selected_formats)
         else:
-            creatives_dict = await generate_creatives_pillow(prop, req.brand)
+            creatives_dict = await generate_creatives_pillow(prop, req.brand, creative_type, selected_formats)
 
         job_dir = os.path.join(STATIC_DIR, "jobs", job_id)
         os.makedirs(job_dir, exist_ok=True)

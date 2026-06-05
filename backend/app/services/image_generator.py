@@ -210,8 +210,106 @@ def build_creative(
     return canvas.convert("RGB")
 
 
-async def generate_creatives(prop: PropertyData, brand: BrandConfig) -> dict[str, bytes]:
-    # Descargar hasta 6 fotos + logo en paralelo
+def build_infografia(
+    bg: Image.Image | None,
+    brand: BrandConfig,
+    prop: PropertyData,
+    w: int,
+    h: int,
+) -> Image.Image:
+    primary = hex_to_rgb(brand.primary_color)
+    secondary = hex_to_rgb(brand.secondary_color)
+    text_rgb = hex_to_rgb(brand.text_color)
+
+    # Fondo: foto desenfocada + overlay oscuro
+    if bg:
+        canvas = crop_center(bg.convert("RGBA"), w, h)
+        canvas = canvas.filter(ImageFilter.GaussianBlur(12))
+        dark = Image.new("RGBA", (w, h), (0, 0, 0, 180))
+        canvas = Image.alpha_composite(canvas, dark)
+    else:
+        canvas = Image.new("RGBA", (w, h), (*primary, 255))
+
+    draw = ImageDraw.Draw(canvas)
+
+    # Banda superior
+    band_h = max(8, int(h * 0.006))
+    draw.rectangle([0, 0, w, band_h], fill=(*secondary, 255))
+
+    # Nombre agencia
+    font_agency = load_font(int(h * 0.034), bold=True)
+    draw.text((30, band_h + int(h * 0.025)), brand.agency_name.upper(), font=font_agency, fill=(*secondary, 255))
+
+    # Precio central
+    price_text = f"USD {prop.price}" if prop.currency == "USD" else f"$ {prop.price}"
+    font_price = load_font(int(h * 0.085), bold=True)
+    price_y = int(h * 0.18)
+    draw.text((w // 2, price_y), price_text, font=font_price, fill=(255, 255, 255, 255), anchor="mm")
+
+    # Título
+    font_title = load_font(int(h * 0.032), bold=False)
+    title_short = prop.title[:55] + ("…" if len(prop.title) > 55 else "")
+    draw.text((w // 2, price_y + int(h * 0.1)), title_short, font=font_title, fill=(220, 220, 220, 255), anchor="mm")
+
+    # Cards de stats
+    stats = []
+    if prop.area_m2:
+        stats.append(("📐", f"{int(prop.area_m2)} m²", "Superficie"))
+    if prop.rooms:
+        stats.append(("🏠", str(prop.rooms), "Ambientes"))
+    if prop.bathrooms:
+        stats.append(("🚿", str(prop.bathrooms), "Baños"))
+    if prop.parking:
+        stats.append(("🚗", str(prop.parking), "Cocheras"))
+
+    if stats:
+        card_w = int((w - 60) / max(len(stats), 1)) - 10
+        card_h = int(h * 0.18)
+        card_y = int(h * 0.42)
+        font_icon = load_font(int(card_h * 0.38))
+        font_val = load_font(int(card_h * 0.30), bold=True)
+        font_lbl = load_font(int(card_h * 0.18))
+        for i, (icon, val, lbl) in enumerate(stats):
+            cx = 30 + i * (card_w + 10)
+            draw.rounded_rectangle([cx, card_y, cx + card_w, card_y + card_h], radius=12, fill=(*primary, 200))
+            draw.rounded_rectangle([cx, card_y, cx + card_w, card_y + 4], radius=0, fill=(*secondary, 255))
+            mid = cx + card_w // 2
+            draw.text((mid, card_y + int(card_h * 0.18)), icon, font=font_icon, anchor="mt")
+            draw.text((mid, card_y + int(card_h * 0.56)), val, font=font_val, fill=(255, 255, 255, 255), anchor="mt")
+            draw.text((mid, card_y + int(card_h * 0.80)), lbl, font=font_lbl, fill=(200, 200, 200, 220), anchor="mt")
+
+    # Ubicación
+    if prop.location:
+        font_loc = load_font(int(h * 0.028))
+        draw.text((w // 2, int(h * 0.70)), f"📍 {prop.location[:55]}", font=font_loc, fill=(220, 220, 220, 230), anchor="mm")
+
+    # Footer
+    footer_h = int(h * 0.08)
+    footer_y = h - footer_h
+    draw.rectangle([0, footer_y, w, h], fill=(*primary, 240))
+    draw.line([(0, footer_y), (w, footer_y)], fill=(*secondary, 255), width=3)
+    contact_parts = []
+    if brand.phone:
+        contact_parts.append(f"📞 {brand.phone}")
+    if brand.website:
+        contact_parts.append(f"🌐 {brand.website}")
+    if brand.instagram:
+        contact_parts.append(f"📷 {brand.instagram}")
+    if contact_parts:
+        font_contact = load_font(int(h * 0.024))
+        draw.text((30, footer_y + (footer_h - int(h * 0.024)) // 2), "   ".join(contact_parts), font=font_contact, fill=(*secondary, 255))
+
+    return canvas.convert("RGB")
+
+
+async def generate_creatives(
+    prop: PropertyData,
+    brand: BrandConfig,
+    creative_type: str = "destacado",
+    formats: list[str] | None = None,
+) -> dict[str, bytes]:
+    selected_formats = {k: v for k, v in FORMATS.items() if formats is None or k in formats}
+
     photo_urls = (prop.photos or [])[:6]
     tasks = [fetch_image(url) for url in photo_urls]
     if brand.logo_url:
@@ -222,25 +320,23 @@ async def generate_creatives(prop: PropertyData, brand: BrandConfig) -> dict[str
     photos = [r for r in all_results[:len(photo_urls)] if isinstance(r, Image.Image)]
     logo = all_results[len(photo_urls)] if brand.logo_url and isinstance(all_results[-1], Image.Image) else None
 
-    # Asignar foto distinta a cada formato
     def get_photo(idx: int) -> Image.Image | None:
         if not photos:
             return None
         return photos[idx % len(photos)]
 
     format_photo_idx = {
-        "feed_1x1":    0,
-        "story_9x16":  1,
-        "banner_16x9": 2,
-        "carousel_1":  0,
-        "carousel_2":  1,
-        "whatsapp":    2,
+        "feed_1x1": 0, "story_9x16": 1, "banner_16x9": 2,
+        "carousel_1": 0, "carousel_2": 1, "whatsapp": 2,
     }
 
     results = {}
-    for fmt_name, (fw, fh) in FORMATS.items():
+    for fmt_name, (fw, fh) in selected_formats.items():
         bg = get_photo(format_photo_idx.get(fmt_name, 0))
-        creative = build_creative(bg, logo, brand, prop, fw, fh)
+        if creative_type == "infografia":
+            creative = build_infografia(bg, brand, prop, fw, fh)
+        else:
+            creative = build_creative(bg, logo, brand, prop, fw, fh)
         buf = BytesIO()
         creative.save(buf, format="JPEG", quality=95, optimize=True)
         results[fmt_name] = buf.getvalue()

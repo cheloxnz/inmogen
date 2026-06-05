@@ -11,6 +11,7 @@ class Settings(BaseSettings):
 
     APIFY_TOKEN: str = ""
     SCRAPERAPI_KEY: str = ""
+    HIGGSFIELD_API_KEY: str = ""
 
     CLOUDINARY_CLOUD_NAME: str = ""
     CLOUDINARY_API_KEY: str = ""

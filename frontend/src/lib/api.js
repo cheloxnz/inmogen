@@ -9,9 +9,14 @@ export function createApi(userId) {
   })
 }
 
-export async function startGeneration(userId, propertyUrl, brand) {
+export async function startGeneration(userId, propertyUrl, brand, creativeType = 'destacado', formats = null) {
   const api = createApi(userId)
-  const { data } = await api.post('/generate/', { property_url: propertyUrl, brand })
+  const { data } = await api.post('/generate/', {
+    property_url: propertyUrl,
+    brand,
+    creative_type: creativeType,
+    formats,
+  })
   return data
 }
 
