@@ -9,7 +9,8 @@ from io import BytesIO
 from app.models.property import PropertyData
 from app.models.brand import BrandConfig
 
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict"
+GEMINI_IMAGE_MODEL = "gemini-2.0-flash-preview-image-generation"
+GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
 FORMATS = {
     "feed_1x1":    {"aspect_ratio": "1:1",  "label": "Feed cuadrado"},
@@ -72,39 +73,43 @@ async def _generate_one(
     aspect_ratio: str,
     photo_b64: str | None,
 ) -> bytes | None:
-    """Llama a Imagen 3 y devuelve bytes de la imagen."""
+    """Llama a Gemini image generation y devuelve bytes de la imagen."""
 
-    instances = [{"prompt": prompt}]
+    parts = []
     if photo_b64:
-        instances[0]["referenceImages"] = [{
-            "referenceType": "REFERENCE_TYPE_RAW",
-            "referenceImage": {
-                "bytesBase64Encoded": photo_b64,
+        parts.append({
+            "inlineData": {
                 "mimeType": "image/jpeg",
+                "data": photo_b64,
             }
-        }]
+        })
+    parts.append({"text": prompt})
 
     payload = {
-        "instances": instances,
-        "parameters": {
-            "sampleCount": 1,
-            "aspectRatio": aspect_ratio,
-            "safetyFilterLevel": "block_few",
-            "personGeneration": "allow_adult",
+        "contents": [{"parts": parts}],
+        "generationConfig": {
+            "responseModalities": ["IMAGE", "TEXT"],
+            "imageGenerationConfig": {
+                "numberOfImages": 1,
+                "aspectRatio": aspect_ratio,
+            }
         }
     }
 
+    url = f"{GEMINI_API_BASE}/{GEMINI_IMAGE_MODEL}:generateContent?key={api_key}"
+
     try:
-        r = await client.post(
-            f"{GEMINI_API_URL}?key={api_key}",
-            json=payload,
-            timeout=60,
-        )
+        r = await client.post(url, json=payload, timeout=90)
         r.raise_for_status()
         data = r.json()
-        predictions = data.get("predictions", [])
-        if predictions and predictions[0].get("bytesBase64Encoded"):
-            return base64.b64decode(predictions[0]["bytesBase64Encoded"])
+        # Buscar la parte de imagen en la respuesta
+        candidates = data.get("candidates", [])
+        for candidate in candidates:
+            for part in candidate.get("content", {}).get("parts", []):
+                if "inlineData" in part:
+                    img_data = part["inlineData"].get("data", "")
+                    if img_data:
+                        return base64.b64decode(img_data)
     except Exception as e:
         raise ValueError(f"Gemini error en {aspect_ratio}: {e}")
     return None
