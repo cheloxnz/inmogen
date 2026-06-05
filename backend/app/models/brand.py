@@ -12,3 +12,4 @@ class BrandConfig(BaseModel):
     phone: str = ""
     website: str = ""
     instagram: str = ""
+    gemini_api_key: str = ""

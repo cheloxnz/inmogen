@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useUser } from '@clerk/clerk-react'
-import { Save, Loader2 } from 'lucide-react'
+import { Save, Loader2, Key, ExternalLink } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { getMe, updateBrand } from '../lib/api'
 
@@ -14,6 +14,7 @@ const DEFAULT_BRAND = {
   phone: '',
   website: '',
   instagram: '',
+  gemini_api_key: '',
 }
 
 export default function Brand() {
@@ -82,6 +83,58 @@ export default function Brand() {
           <input type="text" value={brand.instagram} onChange={e => set('instagram', e.target.value)}
             placeholder="@miinmobiliaria" className={inputCls} />
         </Field>
+
+        {/* Gemini API Key */}
+        <div className="rounded-2xl border border-yellow-400/30 bg-yellow-400/5 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Key size={18} className="text-yellow-400" />
+            <span className="font-semibold text-white">API Key de Google Gemini</span>
+            <span className="text-xs bg-yellow-400 text-gray-900 px-2 py-0.5 rounded-full font-bold ml-1">RECOMENDADO</span>
+          </div>
+          <p className="text-gray-400 text-sm mb-4">
+            Con tu propia API Key de Google, los creativos se generan con <strong className="text-white">Gemini Imagen 3</strong> — calidad profesional, sin costo adicional para vos.
+          </p>
+
+          {/* Instructivo */}
+          <div className="bg-gray-900 rounded-xl p-4 mb-4 space-y-2">
+            <p className="text-xs font-semibold text-yellow-400 uppercase tracking-wide mb-2">Cómo obtener tu API Key gratis:</p>
+            {[
+              { step: '1', text: 'Andá a Google AI Studio', link: 'https://aistudio.google.com/apikey', linkText: 'aistudio.google.com →' },
+              { step: '2', text: 'Iniciá sesión con tu cuenta de Google' },
+              { step: '3', text: 'Click en "Create API Key"' },
+              { step: '4', text: 'Copiá la key y pegála acá abajo' },
+            ].map(({ step, text, link, linkText }) => (
+              <div key={step} className="flex items-start gap-3">
+                <span className="w-5 h-5 rounded-full bg-yellow-400 text-gray-900 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{step}</span>
+                <span className="text-gray-300 text-sm">
+                  {text}
+                  {link && (
+                    <a href={link} target="_blank" rel="noopener noreferrer"
+                      className="ml-1 text-yellow-400 hover:underline inline-flex items-center gap-1">
+                      {linkText} <ExternalLink size={11} />
+                    </a>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="relative">
+            <Key size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+            <input
+              type="password"
+              value={brand.gemini_api_key}
+              onChange={e => set('gemini_api_key', e.target.value)}
+              placeholder="AIzaSy..."
+              className={inputCls + ' pl-8 font-mono text-sm'}
+            />
+          </div>
+          {brand.gemini_api_key ? (
+            <p className="text-green-400 text-xs mt-2 flex items-center gap-1">✓ API Key configurada — tus creativos usarán Gemini Imagen 3</p>
+          ) : (
+            <p className="text-gray-500 text-xs mt-2">Sin API Key se usará el motor básico de generación.</p>
+          )}
+        </div>
 
         {/* Preview mini */}
         <div className="rounded-2xl border border-gray-700 overflow-hidden">
