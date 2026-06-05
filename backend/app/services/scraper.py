@@ -18,12 +18,58 @@ def detect_portal(url: str) -> str:
 
 async def scrape_property(url: str) -> PropertyData:
     portal = detect_portal(url)
+    return await _scrape_with_apify_browser(url, portal)
 
-    if portal == "zonaprop.com.ar":
-        return await _scrape_zonaprop(url)
-    else:
-        # Fallback: Apify generic scraper
-        return await _scrape_apify_generic(url, portal)
+
+async def _scrape_with_apify_browser(url: str, portal: str) -> PropertyData:
+    """Usa apify/web-scraper (browser headless) para bypassear bloqueos."""
+    client = ApifyClient(settings.APIFY_TOKEN)
+    run = client.actor("apify/web-scraper").call(run_input={
+        "startUrls": [{"url": url}],
+        "maxRequestsPerCrawl": 1,
+        "pageFunction": """async function pageFunction({ page, request }) {
+            await page.waitForTimeout(2000);
+            const title = await page.$eval('h1', el => el.innerText.trim()).catch(() => 'Propiedad');
+            const priceEl = await page.$('[class*=price], [class*=precio], [data-qa*=price]');
+            const price = priceEl ? await priceEl.evaluate(el => el.innerText.trim()) : 'Consultar';
+            const locEl = await page.$('[class*=address], [class*=location], [class*=ubicacion], [data-qa*=address]');
+            const location = locEl ? await locEl.evaluate(el => el.innerText.trim()) : '';
+            const photos = await page.$$eval('img', imgs =>
+                imgs.map(i => i.src || i.dataset.src || '').filter(s => s.startsWith('http') && (s.includes('foto') || s.includes('cdn') || s.includes('img') || s.includes('media'))).slice(0, 10)
+            );
+            const bodyText = await page.evaluate(() => document.body.innerText);
+            const m2Match = bodyText.match(/(\d+)\s*m²/i);
+            const ambMatch = bodyText.match(/(\d+)\s*(amb|ambientes)/i);
+            const banoMatch = bodyText.match(/(\d+)\s*(baño|banos)/i);
+            return {
+                title,
+                price,
+                location,
+                photos,
+                area_m2: m2Match ? parseFloat(m2Match[1]) : null,
+                rooms: ambMatch ? parseInt(ambMatch[1]) : null,
+                bathrooms: banoMatch ? parseInt(banoMatch[1]) : null,
+            };
+        }"""
+    })
+    items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
+    if not items:
+        raise ValueError(f"No se pudo extraer datos de {url}")
+    raw = items[0]
+    price = re.sub(r"[^\d.,]", "", str(raw.get("price", ""))) or "Consultar"
+    return PropertyData(
+        url=url,
+        title=raw.get("title", "Propiedad")[:100],
+        price=price,
+        currency="USD",
+        location=str(raw.get("location", ""))[:100],
+        photos=raw.get("photos", []),
+        area_m2=raw.get("area_m2"),
+        rooms=raw.get("rooms"),
+        bathrooms=raw.get("bathrooms"),
+        portal=portal,
+        scraped_at=datetime.utcnow(),
+    )
 
 
 async def _scrape_zonaprop(url: str) -> PropertyData:
