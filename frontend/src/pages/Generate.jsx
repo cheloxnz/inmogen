@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useUser } from '@clerk/clerk-react'
-import { Link2, Loader2, CheckCircle, XCircle, Download, Search, ChevronRight } from 'lucide-react'
+import { Link2, Loader2, CheckCircle, XCircle, Download, Search, ChevronRight, RefreshCw } from 'lucide-react'
 
 async function downloadImage(url, filename) {
   try {
@@ -15,7 +15,7 @@ async function downloadImage(url, filename) {
   }
 }
 import toast from 'react-hot-toast'
-import { startGeneration, pollJob, getMe, scrapePreview } from '../lib/api'
+import { startGeneration, pollJob, getMe, scrapePreview, regenerateSlot } from '../lib/api'
 
 const STATUS_LABELS = {
   pending: 'En cola...',
@@ -319,6 +319,7 @@ export default function Generate() {
   const [slots, setSlots] = useState([{ type: 'destacado', text: '' }])
   const [slotErrors, setSlotErrors] = useState({})
   const [job, setJob] = useState(null)
+  const [regenerating, setRegenerating] = useState({})
   const [loading, setLoading] = useState(false)
   const [credits, setCredits] = useState(null)
 
@@ -383,6 +384,29 @@ export default function Generate() {
       toast.error(err.response?.data?.detail || 'Error al iniciar generación')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleRegenerate(i) {
+    if (!job?.id) return
+    const entry = job.creatives_fmt?.[i] || ''
+    const ct = CREATIVE_TYPES.find(t => entry.includes(t.id))?.id || 'destacado'
+    const slotText = slots[i]?.text || ''
+    const fmtId = fmt
+    setRegenerating(r => ({ ...r, [i]: true }))
+    try {
+      const result = await regenerateSlot(userId, job.id, i, ct, slotText, fmtId)
+      setJob(prev => {
+        const creatives = [...(prev.creatives || [])]
+        const creatives_fmt = [...(prev.creatives_fmt || [])]
+        creatives[i] = result.url + '?t=' + Date.now()
+        creatives_fmt[i] = result.entry
+        return { ...prev, creatives, creatives_fmt }
+      })
+    } catch {
+      toast.error('Error al regenerar')
+    } finally {
+      setRegenerating(r => ({ ...r, [i]: false }))
     }
   }
 
@@ -488,11 +512,21 @@ export default function Generate() {
                             <p className="text-white text-xs font-medium">
                               {typeName ? `${typeName.emoji} ${typeName.label}` : `#${i + 1}`}
                             </p>
-                            <button
-                              onClick={() => downloadImage(imgUrl, `inmogen_${entry}.jpg`)}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-white/20 rounded-md hover:bg-white/40">
-                              <Download size={12} className="text-white" />
-                            </button>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => handleRegenerate(i)}
+                                disabled={regenerating[i]}
+                                title="Regenerar"
+                                className="p-1 bg-white/20 rounded-md hover:bg-white/40 disabled:opacity-50">
+                                <RefreshCw size={12} className={`text-white ${regenerating[i] ? 'animate-spin' : ''}`} />
+                              </button>
+                              <button
+                                onClick={() => downloadImage(imgUrl, `inmogen_${entry}.jpg`)}
+                                title="Descargar"
+                                className="p-1 bg-white/20 rounded-md hover:bg-white/40">
+                                <Download size={12} className="text-white" />
+                              </button>
+                            </div>
                           </div>
                         </div>
                       )

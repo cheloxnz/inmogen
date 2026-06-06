@@ -33,6 +33,13 @@ class CreativeSlot(BaseModel):
     custom_text: str = ""
 
 
+class RegenerateRequest(BaseModel):
+    slot_index: int
+    creative_type: str
+    custom_text: str = ""
+    fmt_name: str = "feed_1x1"
+
+
 class GenerateRequest(BaseModel):
     property_url: str
     brand: BrandConfig
@@ -96,6 +103,76 @@ async def get_job_status(job_id: str, x_user_id: str = Header(...)):
         raise HTTPException(404, "Job no encontrado")
     job["id"] = str(job.pop("_id"))
     return job
+
+
+@router.post("/{job_id}/regenerate")
+async def regenerate_slot(job_id: str, req: RegenerateRequest, x_user_id: str = Header(...)):
+    """Regenera una imagen individual de un job ya completado. Sin costo de créditos."""
+    from PIL import Image
+    from io import BytesIO as BIO
+
+    db = get_db()
+    job = await db.jobs.find_one({"_id": ObjectId(job_id), "user_id": x_user_id})
+    if not job:
+        raise HTTPException(404, "Job no encontrado")
+    if job.get("status") != "done":
+        raise HTTPException(400, "El job debe estar completado")
+
+    ct = req.creative_type if req.creative_type in VALID_TYPES else "destacado"
+    fmt = req.fmt_name if req.fmt_name in VALID_FORMATS else "feed_1x1"
+    idx = req.slot_index
+
+    user = await db.users.find_one({"clerk_id": x_user_id})
+    brand_data = (user or {}).get("brand")
+    if not brand_data:
+        raise HTTPException(400, "Sin configuración de marca")
+    brand = BrandConfig(**brand_data)
+
+    prop_data = job.get("property_data")
+    if not prop_data:
+        raise HTTPException(400, "Sin datos de propiedad en el job")
+    from app.models.property import PropertyData
+    prop = PropertyData(**prop_data)
+
+    logo_img = None
+    if brand.logo_url:
+        logo_bytes = await _fetch_logo_bytes(brand.logo_url)
+        if logo_bytes:
+            try:
+                logo_img = Image.open(BIO(logo_bytes)).convert("RGBA")
+            except Exception:
+                pass
+
+    bg_dict = await pillow_creatives(prop, brand, [ct], fmt, slot_index=idx)
+    bg_bytes = bg_dict.get(ct)
+    if not bg_bytes:
+        raise HTTPException(500, "Error generando el fondo")
+
+    img_bytes = apply_overlay(bg_bytes, logo_img, brand, prop, ct, fmt, custom_text=req.custom_text)
+
+    entry = f"{ct}_{idx}_{fmt}"
+    job_dir = os.path.join(STATIC_DIR, "jobs", job_id)
+    os.makedirs(job_dir, exist_ok=True)
+    img_path = os.path.join(job_dir, f"{entry}.jpg")
+    with open(img_path, "wb") as f:
+        f.write(img_bytes)
+
+    new_url = f"{API_BASE_URL}/static/jobs/{job_id}/{entry}.jpg"
+    creatives = list(job.get("creatives", []))
+    creatives_fmt = list(job.get("creatives_fmt", []))
+
+    if idx < len(creatives):
+        creatives[idx] = new_url
+        creatives_fmt[idx] = entry
+    else:
+        creatives.append(new_url)
+        creatives_fmt.append(entry)
+
+    await db.jobs.update_one(
+        {"_id": ObjectId(job_id)},
+        {"$set": {"creatives": creatives, "creatives_fmt": creatives_fmt, "updated_at": datetime.utcnow()}}
+    )
+    return {"url": new_url, "entry": entry, "index": idx}
 
 
 @router.get("/{job_id}/zip")

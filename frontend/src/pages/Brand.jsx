@@ -22,6 +22,15 @@ function resizeImageToDataUrl(file, maxH = 300) {
   })
 }
 
+const PALETTES = [
+  { name: 'Azul corp.', primary: '#1A3C6E', secondary: '#F5A623' },
+  { name: 'Negro elegante', primary: '#111111', secondary: '#E5C229' },
+  { name: 'Verde premium', primary: '#1B4332', secondary: '#52B788' },
+  { name: 'Bordo clásico', primary: '#6B2737', secondary: '#F2C166' },
+  { name: 'Gris moderno', primary: '#2D3748', secondary: '#ECC94B' },
+  { name: 'Azul marino', primary: '#0F2044', secondary: '#63B3ED' },
+]
+
 const DEFAULT_BRAND = {
   agency_name: '',
   logo_url: '',
@@ -109,10 +118,24 @@ export default function Brand() {
           )}
         </Field>
 
-        <div className="grid grid-cols-3 gap-4">
-          <ColorField label="Color primario" value={brand.primary_color} onChange={v => set('primary_color', v)} />
-          <ColorField label="Color secundario" value={brand.secondary_color} onChange={v => set('secondary_color', v)} />
-          <ColorField label="Color texto" value={brand.text_color} onChange={v => set('text_color', v)} />
+        <div>
+          <label className="block text-sm text-gray-400 mb-2">Paletas profesionales</label>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
+            {PALETTES.map(p => (
+              <button key={p.name} type="button" title={p.name}
+                onClick={() => { set('primary_color', p.primary); set('secondary_color', p.secondary) }}
+                className="rounded-xl overflow-hidden border-2 border-transparent hover:border-yellow-400 transition-all">
+                <div className="h-6" style={{ backgroundColor: p.primary }} />
+                <div className="h-2" style={{ backgroundColor: p.secondary }} />
+                <div className="text-xs text-gray-500 text-center py-1 bg-gray-900 leading-tight px-1">{p.name}</div>
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <ColorField label="Color primario" value={brand.primary_color} onChange={v => set('primary_color', v)} />
+            <ColorField label="Color secundario" value={brand.secondary_color} onChange={v => set('secondary_color', v)} />
+            <ColorField label="Color texto" value={brand.text_color} onChange={v => set('text_color', v)} />
+          </div>
         </div>
 
         <Field label="Teléfono / WhatsApp">

@@ -51,6 +51,17 @@ export async function listJobs(userId) {
   return data
 }
 
+export async function regenerateSlot(userId, jobId, slotIndex, creativeType, customText, fmtName) {
+  const api = createApi(userId)
+  const { data } = await api.post(`/generate/${jobId}/regenerate`, {
+    slot_index: slotIndex,
+    creative_type: creativeType,
+    custom_text: customText,
+    fmt_name: fmtName,
+  })
+  return data
+}
+
 export async function createCheckout(userId, plan) {
   const api = createApi(userId)
   const { data } = await api.post(`/billing/checkout?plan=${plan}`)

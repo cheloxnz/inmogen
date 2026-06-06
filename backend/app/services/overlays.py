@@ -250,7 +250,7 @@ def overlay_hook_attack(canvas, logo, brand, prop, w, h, custom_text: str = ""):
     secondary = hex_to_rgb(brand.secondary_color)
     white = (255, 255, 255, 255)
 
-    dark = Image.new("RGBA", (w, h), (0, 0, 0, 110))
+    dark = Image.new("RGBA", (w, h), (0, 0, 0, 70))
     canvas = Image.alpha_composite(canvas, dark)
     draw = ImageDraw.Draw(canvas)
     draw_logo_agency(canvas, logo, brand, w, h, b, side="right")
@@ -303,7 +303,7 @@ def overlay_storytelling(canvas, logo, brand, prop, w, h, custom_text: str = "")
     secondary = hex_to_rgb(brand.secondary_color)
     white = (255, 255, 255, 255)
 
-    dark = Image.new("RGBA", (w, h), (0, 0, 0, 110))
+    dark = Image.new("RGBA", (w, h), (0, 0, 0, 80))
     canvas = Image.alpha_composite(canvas, dark)
     draw = ImageDraw.Draw(canvas)
     draw_logo_agency(canvas, logo, brand, w, h, b, side="left")
