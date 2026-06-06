@@ -1,8 +1,26 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useUser } from '@clerk/clerk-react'
-import { Save, Loader2, Key, ExternalLink } from 'lucide-react'
+import { Save, Loader2, Key, ExternalLink, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { getMe, updateBrand } from '../lib/api'
+
+function resizeImageToDataUrl(file, maxH = 300) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const scale = Math.min(1, maxH / img.height)
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(img.width * scale)
+      canvas.height = Math.round(img.height * scale)
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/png', 0.9))
+    }
+    img.onerror = reject
+    img.src = url
+  })
+}
 
 const DEFAULT_BRAND = {
   agency_name: '',
@@ -22,6 +40,23 @@ export default function Brand() {
   const userId = user?.id
   const [brand, setBrand] = useState(DEFAULT_BRAND)
   const [saving, setSaving] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const logoInputRef = useRef(null)
+
+  async function handleLogoFile(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) return toast.error('El logo debe pesar menos de 5MB')
+    setUploadingLogo(true)
+    try {
+      const dataUrl = await resizeImageToDataUrl(file, 300)
+      set('logo_url', dataUrl)
+    } catch {
+      toast.error('No se pudo procesar la imagen')
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
 
   useEffect(() => {
     if (!userId) return
@@ -55,11 +90,22 @@ export default function Brand() {
             placeholder="Inmobiliaria Rodríguez" className={inputCls} />
         </Field>
 
-        <Field label="URL del logo (imagen)">
-          <input type="url" value={brand.logo_url} onChange={e => set('logo_url', e.target.value)}
-            placeholder="https://..." className={inputCls} />
+        <Field label="Logo de la agencia">
+          <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoFile} className="hidden" />
+          <div className="flex gap-2">
+            <button type="button" onClick={() => logoInputRef.current?.click()}
+              disabled={uploadingLogo}
+              className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 border border-gray-700 rounded-xl text-sm text-gray-300 hover:border-yellow-400 transition-colors disabled:opacity-50">
+              {uploadingLogo ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              {uploadingLogo ? 'Procesando...' : 'Subir logo'}
+            </button>
+            <input type="url" value={brand.logo_url.startsWith('data:') ? '' : brand.logo_url}
+              onChange={e => set('logo_url', e.target.value)}
+              placeholder="O pegá una URL de imagen"
+              className={inputCls + ' flex-1'} />
+          </div>
           {brand.logo_url && (
-            <img src={brand.logo_url} alt="Logo preview" className="mt-2 h-12 object-contain rounded" />
+            <img src={brand.logo_url} alt="Logo preview" className="mt-2 h-12 object-contain rounded bg-gray-800 p-1" />
           )}
         </Field>
 

@@ -1,6 +1,19 @@
 import { useState, useEffect } from 'react'
 import { useUser } from '@clerk/clerk-react'
-import { Link2, Loader2, CheckCircle, XCircle, Download, Search, ChevronRight, X } from 'lucide-react'
+import { Link2, Loader2, CheckCircle, XCircle, Download, Search, ChevronRight } from 'lucide-react'
+
+async function downloadImage(url, filename) {
+  try {
+    const res = await fetch(url)
+    const blob = await res.blob()
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = filename
+    a.click()
+  } catch {
+    window.open(url, '_blank')
+  }
+}
 import toast from 'react-hot-toast'
 import { startGeneration, pollJob, getMe, scrapePreview } from '../lib/api'
 
@@ -455,13 +468,19 @@ export default function Generate() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
                     {job.creatives.map((imgUrl, i) => {
                       const typeName = CREATIVE_TYPES.find(t => job.creatives_fmt?.[i]?.startsWith(t.id))
+                      const entry = job.creatives_fmt?.[i] || `imagen_${i + 1}`
                       return (
-                        <div key={i} className="relative rounded-xl overflow-hidden border border-gray-700 aspect-square">
+                        <div key={i} className="relative group rounded-xl overflow-hidden border border-gray-700 aspect-square">
                           <img src={imgUrl} alt={`Creativo ${i + 1}`} className="w-full h-full object-cover" />
-                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-2">
+                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-2 flex items-end justify-between">
                             <p className="text-white text-xs font-medium">
                               {typeName ? `${typeName.emoji} ${typeName.label}` : `#${i + 1}`}
                             </p>
+                            <button
+                              onClick={() => downloadImage(imgUrl, `inmogen_${entry}.jpg`)}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-white/20 rounded-md hover:bg-white/40">
+                              <Download size={12} className="text-white" />
+                            </button>
                           </div>
                         </div>
                       )

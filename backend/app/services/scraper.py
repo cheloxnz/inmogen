@@ -121,6 +121,46 @@ def _is_property_photo(url: str) -> bool:
     return any(g in url_lower for g in good)
 
 
+def _extract_price_from_json(html: str) -> tuple[str, str] | None:
+    """Extrae precio y moneda del JSON embedido. Retorna (price_str, currency) o None."""
+    m = re.search(r'<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
+    if not m:
+        return None
+    try:
+        data = json.loads(m.group(1))
+    except Exception:
+        return None
+
+    price_keys = {"price", "precio", "amount", "value", "monto", "priceTotal", "totalPrice"}
+    currency_keys = {"currency", "moneda", "currencyCode"}
+    found_price = None
+    found_currency = "USD"
+
+    def walk(obj, depth=0):
+        nonlocal found_price, found_currency
+        if depth > 15 or found_price:
+            return
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                kl = k.lower()
+                if kl in currency_keys and isinstance(v, str) and v:
+                    found_currency = "ARS" if v.upper() in ("ARS", "PESO", "$") else "USD"
+                if kl in price_keys and isinstance(v, (int, float, str)):
+                    raw = re.sub(r"[^\d]", "", str(v))
+                    if raw and int(raw) > 100:
+                        found_price = raw
+                        return
+                walk(v, depth + 1)
+        elif isinstance(obj, list):
+            for item in obj:
+                walk(item, depth + 1)
+                if found_price:
+                    return
+
+    walk(data)
+    return (found_price, found_currency) if found_price else None
+
+
 def _parse_property(soup: BeautifulSoup, html: str, url: str, portal: str) -> PropertyData:
     # --- Título ---
     title = ""
@@ -131,27 +171,29 @@ def _parse_property(soup: BeautifulSoup, html: str, url: str, portal: str) -> Pr
             break
     title = title or "Propiedad"
 
-    # --- Precio ---
+    # --- Precio: primero desde JSON embedido, luego CSS selectors ---
     price = "Consultar"
-    for sel in [
-        "[class*=price]", "[class*=precio]",
-        "[data-qa*=price]", "[data-testid*=price]",
-    ]:
-        el = soup.select_one(sel)
-        if el:
-            raw = el.get_text(strip=True)
-            nums = re.sub(r"[^\d]", "", raw)
-            if nums:
-                price = nums
-                break
-
-    # --- Moneda ---
     currency = "USD"
-    price_el = soup.find(class_=re.compile(r"price|precio", re.I))
-    if price_el and "$" in price_el.get_text():
-        currency = "ARS" if "zonaprop" in portal or "argenprop" in portal else "USD"
-    if "USD" in soup.get_text().upper():
-        currency = "USD"
+    json_price = _extract_price_from_json(html)
+    if json_price:
+        price, currency = json_price
+    else:
+        for sel in [
+            "[class*=price]", "[class*=precio]",
+            "[data-qa*=price]", "[data-testid*=price]",
+        ]:
+            el = soup.select_one(sel)
+            if el:
+                raw = el.get_text(strip=True)
+                nums = re.sub(r"[^\d]", "", raw)
+                if nums:
+                    price = nums
+                    break
+        price_el = soup.find(class_=re.compile(r"price|precio", re.I))
+        if price_el and "$" in price_el.get_text():
+            currency = "ARS" if "zonaprop" in portal or "argenprop" in portal else "USD"
+        if "USD" in soup.get_text().upper():
+            currency = "USD"
 
     # --- Ubicación ---
     location = ""

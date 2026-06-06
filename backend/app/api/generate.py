@@ -121,6 +121,13 @@ async def download_zip(job_id: str):
 async def _fetch_logo_bytes(url: str) -> bytes | None:
     if not url:
         return None
+    if url.startswith("data:"):
+        import base64
+        try:
+            _, data = url.split(",", 1)
+            return base64.b64decode(data)
+        except Exception:
+            return None
     try:
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
             r = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
