@@ -124,11 +124,14 @@ export default function Dashboard() {
   const userId = user?.id
   const [userData, setUserData] = useState(null)
   const [jobs, setJobs] = useState([])
+  const [loadingData, setLoadingData] = useState(true)
 
   useEffect(() => {
     if (!userId) return
-    getMe(userId).then(setUserData)
-    listJobs(userId).then(setJobs)
+    setLoadingData(true)
+    Promise.all([getMe(userId), listJobs(userId)])
+      .then(([u, j]) => { setUserData(u); setJobs(j) })
+      .finally(() => setLoadingData(false))
   }, [userId])
 
   const doneJobs = jobs.filter(j => j.status === 'done')
@@ -200,7 +203,27 @@ export default function Dashboard() {
       )}
 
       {/* Historial */}
-      {jobs.length > 0 && (
+      {loadingData ? (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-white">Historial</h2>
+          </div>
+          <div className="space-y-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex gap-3 animate-pulse">
+                <div className="flex gap-1">
+                  {[1,2,3].map(j => <div key={j} className="w-14 h-14 rounded-lg bg-gray-800" />)}
+                </div>
+                <div className="flex-1 space-y-2 py-1">
+                  <div className="h-3 bg-gray-800 rounded w-1/3" />
+                  <div className="h-3 bg-gray-800 rounded w-2/3" />
+                  <div className="h-3 bg-gray-800 rounded w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : jobs.length > 0 ? (
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-white">Historial</h2>
@@ -210,15 +233,13 @@ export default function Dashboard() {
             {jobs.map(job => <JobCard key={job.id} job={job} />)}
           </div>
         </div>
-      )}
-
-      {jobs.length === 0 && userData && (
+      ) : userData ? (
         <div className="text-center py-16 text-gray-600">
           <Image size={40} className="mx-auto mb-3 opacity-30" />
           <p>Todavía no generaste ningún creativo.</p>
           <Link to="/generate" className="mt-3 inline-block text-yellow-400 text-sm hover:underline">Crear el primero →</Link>
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

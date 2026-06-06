@@ -331,9 +331,13 @@ export default function Generate() {
   useEffect(() => {
     if (!job || job.status === 'done' || job.status === 'error') return
     const interval = setInterval(async () => {
-      const updated = await pollJob(userId, job.id)
-      setJob(updated)
-    }, 2500)
+      try {
+        const updated = await pollJob(userId, job.id)
+        setJob(updated)
+      } catch {
+        // silenciar errores de red durante el polling
+      }
+    }, 3000)
     return () => clearInterval(interval)
   }, [job, userId])
 
@@ -357,7 +361,7 @@ export default function Generate() {
       setSelectedPhotos((data.photos || []).slice(0, 7))
       setStep(2)
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'No se pudo procesar la URL')
+      toast.error(err.response?.data?.detail || 'No se pudo procesar la URL', { duration: 5000 })
     } finally {
       setLoading(false)
     }
@@ -382,8 +386,8 @@ export default function Generate() {
     setLoading(true)
     try {
       const userData = await getMe(userId)
-      if (!userData.brand) {
-        toast.error('Primero configurá tu marca en "Mi Marca"')
+      if (!userData.brand?.agency_name) {
+        toast.error('Primero configurá tu marca en "Mi Marca"', { duration: 4000 })
         return
       }
       const creativeSlots = slots.map(s => ({ type: s.type, custom_text: s.text.trim() }))
@@ -392,7 +396,8 @@ export default function Generate() {
       setCredits(c => c - 1)
       setStep(3)
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al iniciar generación')
+      const msg = err.response?.data?.detail || 'Error al iniciar generación'
+      toast.error(msg, { duration: 5000 })
     } finally {
       setLoading(false)
     }
