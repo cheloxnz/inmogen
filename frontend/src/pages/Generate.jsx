@@ -320,6 +320,7 @@ export default function Generate() {
   const [slotErrors, setSlotErrors] = useState({})
   const [job, setJob] = useState(null)
   const [regenerating, setRegenerating] = useState({})
+  const [addingMore, setAddingMore] = useState(false)
   const [loading, setLoading] = useState(false)
   const [credits, setCredits] = useState(null)
 
@@ -335,6 +336,16 @@ export default function Generate() {
     }, 2500)
     return () => clearInterval(interval)
   }, [job, userId])
+
+  // Cuando el job termina, persistir las URLs en los slots
+  useEffect(() => {
+    if (job?.status !== 'done') return
+    setSlots(prev => prev.map((slot, i) => ({
+      ...slot,
+      url: job.creatives?.[i] || slot.url || null,
+      entry: job.creatives_fmt?.[i] || slot.entry || null,
+    })))
+  }, [job?.status])
 
   async function handleScrape(e) {
     e.preventDefault()
@@ -384,6 +395,43 @@ export default function Generate() {
       toast.error(err.response?.data?.detail || 'Error al iniciar generación')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleGenerateMore() {
+    const newSlots = slots.map((s, i) => ({ ...s, i })).filter(s => !s.url)
+    if (newSlots.length === 0) return
+
+    const errors = {}
+    newSlots.forEach(slot => {
+      const typeDef = TYPE_MAP[slot.type]
+      if (typeDef?.textLabel && !slot.text.trim()) errors[slot.i] = `El texto de ${typeDef.label} es requerido`
+    })
+    if (Object.keys(errors).length > 0) {
+      setSlotErrors(errors)
+      return toast.error('Completá los textos requeridos o eliminá esos ángulos')
+    }
+    setSlotErrors({})
+    setAddingMore(true)
+    try {
+      for (const slot of newSlots) {
+        setRegenerating(r => ({ ...r, [slot.i]: true }))
+        const result = await regenerateSlot(userId, job.id, slot.i, slot.type, slot.text.trim(), fmt)
+        const newUrl = result.url + '?t=' + Date.now()
+        setSlots(prev => prev.map((s, idx) => idx === slot.i ? { ...s, url: newUrl, entry: result.entry } : s))
+        setJob(prev => {
+          const creatives = [...(prev.creatives || [])]
+          const creatives_fmt = [...(prev.creatives_fmt || [])]
+          creatives[slot.i] = newUrl
+          creatives_fmt[slot.i] = result.entry
+          return { ...prev, creatives, creatives_fmt }
+        })
+        setRegenerating(r => ({ ...r, [slot.i]: false }))
+      }
+    } catch {
+      toast.error('Error al generar los nuevos ángulos')
+    } finally {
+      setAddingMore(false)
     }
   }
 
@@ -484,6 +532,7 @@ export default function Generate() {
           {/* Job result */}
           {job && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mt-6">
+              {/* Status header */}
               <div className="flex items-center gap-3 mb-4">
                 {job.status === 'done' ? (
                   <CheckCircle className="text-green-400" size={22} />
@@ -493,35 +542,39 @@ export default function Generate() {
                   <Loader2 className="text-yellow-400 animate-spin" size={22} />
                 )}
                 <span className="text-white font-medium">{STATUS_LABELS[job.status]}</span>
+                {job.status === 'done' && (
+                  <span className="text-gray-500 text-xs ml-auto">{job.creatives?.length} imagen{job.creatives?.length !== 1 ? 'es' : ''}</span>
+                )}
               </div>
 
               {job.status === 'error' && (
                 <p className="text-red-400 text-sm bg-red-900/20 rounded-lg p-3">{job.error}</p>
               )}
 
-              {job.creatives?.length > 0 && (
-                <>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
-                    {job.creatives.map((imgUrl, i) => {
-                      const typeName = CREATIVE_TYPES.find(t => job.creatives_fmt?.[i]?.includes(t.id))
-                      const entry = job.creatives_fmt?.[i] || `imagen_${i + 1}`
+              {/* Grilla: imágenes generadas + placeholders de loading */}
+              {(job.creatives?.length > 0 || isRunning) && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
+                  {/* Imágenes ya generadas */}
+                  {slots.map((slot, i) => {
+                    const imgUrl = slot.url || job.creatives?.[i]
+                    const entry = slot.entry || job.creatives_fmt?.[i] || `imagen_${i + 1}`
+                    const typeDef = TYPE_MAP[slot.type]
+
+                    if (imgUrl) {
                       return (
                         <div key={i} className="relative group rounded-xl overflow-hidden border border-gray-700 aspect-square">
-                          <img src={imgUrl} alt={`Creativo ${i + 1}`} className="w-full h-full object-cover" />
+                          <img src={imgUrl} alt={entry} className="w-full h-full object-cover" />
                           <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-2 flex items-end justify-between">
                             <p className="text-white text-xs font-medium">
-                              {typeName ? `${typeName.emoji} ${typeName.label}` : `#${i + 1}`}
+                              {typeDef ? `${typeDef.emoji} ${typeDef.label}` : `#${i + 1}`}
                             </p>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button
-                                onClick={() => handleRegenerate(i)}
-                                disabled={regenerating[i]}
+                              <button onClick={() => handleRegenerate(i)} disabled={regenerating[i]}
                                 title="Regenerar"
                                 className="p-1 bg-white/20 rounded-md hover:bg-white/40 disabled:opacity-50">
                                 <RefreshCw size={12} className={`text-white ${regenerating[i] ? 'animate-spin' : ''}`} />
                               </button>
-                              <button
-                                onClick={() => downloadImage(imgUrl, `inmogen_${entry}.jpg`)}
+                              <button onClick={() => downloadImage(imgUrl.split('?')[0], `inmogen_${entry}.jpg`)}
                                 title="Descargar"
                                 className="p-1 bg-white/20 rounded-md hover:bg-white/40">
                                 <Download size={12} className="text-white" />
@@ -530,28 +583,66 @@ export default function Generate() {
                           </div>
                         </div>
                       )
-                    })}
-                    {job.status !== 'done' && Array.from({ length: total - job.creatives.length }).map((_, i) => (
-                      <div key={`ph-${i}`} className="rounded-xl aspect-square bg-gray-800 border border-gray-700 flex items-center justify-center">
-                        <Loader2 size={22} className="text-gray-600 animate-spin" />
+                    }
+                    // Slot sin URL → loading o pendiente de generar
+                    return (
+                      <div key={i} className="rounded-xl aspect-square bg-gray-800 border border-gray-700 flex flex-col items-center justify-center gap-2">
+                        {isRunning || regenerating[i] || addingMore
+                          ? <Loader2 size={22} className="text-gray-600 animate-spin" />
+                          : <>
+                              <span className="text-2xl">{typeDef?.emoji || '🎨'}</span>
+                              <span className="text-xs text-gray-500">{typeDef?.label || slot.type}</span>
+                            </>
+                        }
                       </div>
-                    ))}
-                  </div>
-
-                  {job.status === 'done' && job.zip_url && (
-                    <a href={job.zip_url}
-                      className="flex items-center justify-center gap-2 w-full py-3 bg-yellow-400 text-gray-900 font-semibold rounded-xl hover:bg-yellow-300 transition-colors">
-                      <Download size={18} />
-                      Descargar ZIP ({job.creatives?.length} imágenes)
-                    </a>
-                  )}
-                </>
+                    )
+                  })}
+                </div>
               )}
 
-              {['pending', 'scraping', 'generating'].includes(job.status) && (
-                <div className="w-full bg-gray-800 rounded-full h-1.5 mt-3">
+              {/* Progress bar */}
+              {isRunning && (
+                <div className="w-full bg-gray-800 rounded-full h-1.5 mb-4">
                   <div className="bg-yellow-400 h-1.5 rounded-full transition-all duration-700"
                     style={{ width: job.status === 'pending' ? '8%' : job.status === 'scraping' ? '35%' : '70%' }} />
+                </div>
+              )}
+
+              {/* Acciones cuando está done */}
+              {job.status === 'done' && (
+                <div className="space-y-3">
+                  {/* Slots nuevos sin URL */}
+                  {slots.some(s => !s.url) && (
+                    <div className="space-y-2 pt-2 border-t border-gray-800">
+                      <p className="text-xs text-gray-500">Nuevos ángulos a generar:</p>
+                      {slots.map((slot, i) => !slot.url && (
+                        <SlotRow key={i} slot={slot} index={i}
+                          onChange={(idx, field, val) => setSlots(prev => prev.map((s, j) => j === idx ? { ...s, [field]: val } : s))}
+                          onRemove={idx => setSlots(prev => prev.filter((_, j) => j !== idx))}
+                          error={slotErrors?.[i]}
+                        />
+                      ))}
+                      <button onClick={handleGenerateMore} disabled={addingMore}
+                        className="w-full py-3 bg-yellow-400 text-gray-900 font-semibold rounded-xl hover:bg-yellow-300 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                        {addingMore && <Loader2 size={16} className="animate-spin" />}
+                        Generar {slots.filter(s => !s.url).length} nueva{slots.filter(s => !s.url).length !== 1 ? 's' : ''}
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <button onClick={() => setSlots(prev => [...prev, { type: 'destacado', text: '', url: null }])}
+                      className="px-4 py-2.5 border border-gray-700 text-gray-400 rounded-xl hover:border-yellow-400 hover:text-yellow-400 transition-colors text-sm">
+                      + Agregar ángulo
+                    </button>
+                    {job.zip_url && (
+                      <a href={job.zip_url}
+                        className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-yellow-400 text-gray-900 font-semibold rounded-xl hover:bg-yellow-300 transition-colors text-sm">
+                        <Download size={16} />
+                        Descargar ZIP ({job.creatives?.length})
+                      </a>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
