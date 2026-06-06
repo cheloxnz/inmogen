@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useUser } from '@clerk/clerk-react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
-import { Image, CreditCard, ArrowRight, CheckCircle, Clock, XCircle, Download, ChevronDown, ChevronUp, Trash2, ChevronLeft, ChevronRight, AlertTriangle, Gift, Copy, Zap, PartyPopper } from 'lucide-react'
+import { Image, CreditCard, ArrowRight, CheckCircle, Clock, XCircle, Download, ChevronDown, ChevronUp, Trash2, ChevronLeft, ChevronRight, AlertTriangle, Gift, Copy, Zap, ExternalLink } from 'lucide-react'
 import { getMe, listJobs, deleteJob, deleteAllJobs, getReferralInfo } from '../lib/api'
 import toast from 'react-hot-toast'
 
@@ -128,6 +128,12 @@ function JobCard({ job, onDelete }) {
             <a href={job.zip_url} download
               className="flex items-center gap-1 px-2.5 py-1.5 bg-yellow-400 text-gray-900 rounded-lg text-xs font-semibold hover:bg-yellow-300 transition-colors">
               <Download size={11} /> ZIP
+            </a>
+          )}
+          {job.status === 'done' && (
+            <a href={`/p/${job.id}`} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg text-xs font-semibold hover:bg-blue-500/20 transition-colors">
+              <ExternalLink size={11} /> Landing
             </a>
           )}
           {(job.creatives || []).length > 0 && (

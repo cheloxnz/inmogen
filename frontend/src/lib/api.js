@@ -89,3 +89,13 @@ export async function getReferralInfo(userId) {
   const { data } = await api.get('/users/referral')
   return data
 }
+
+export async function getPublicJob(jobId) {
+  const { data } = await axios.get(`${API_BASE}/generate/${jobId}/share`)
+  return data
+}
+
+export async function submitLead(jobId, lead) {
+  const { data } = await axios.post(`${API_BASE}/leads/${jobId}`, lead)
+  return data
+}

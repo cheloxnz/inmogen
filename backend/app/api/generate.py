@@ -156,6 +156,23 @@ async def get_job_public(job_id: str):
         raise HTTPException(404, "Job no encontrado")
     if job.get("status") != "done":
         raise HTTPException(400, "Job no completado")
+
+    # Obtener brand del usuario (sin datos sensibles)
+    brand = None
+    user = await db.users.find_one({"clerk_id": job.get("user_id")})
+    if user and user.get("brand"):
+        raw = user["brand"]
+        brand = {
+            "agency_name": raw.get("agency_name", ""),
+            "logo_url": raw.get("logo_url", ""),
+            "primary_color": raw.get("primary_color", "#1A3C6E"),
+            "secondary_color": raw.get("secondary_color", "#F5A623"),
+            "text_color": raw.get("text_color", "#FFFFFF"),
+            "phone": raw.get("phone", ""),
+            "website": raw.get("website", ""),
+            "instagram": raw.get("instagram", ""),
+        }
+
     return {
         "id": str(job["_id"]),
         "property_url": job.get("property_url"),
@@ -164,6 +181,7 @@ async def get_job_public(job_id: str):
         "creatives_fmt": job.get("creatives_fmt", []),
         "zip_url": job.get("zip_url"),
         "created_at": job.get("created_at"),
+        "brand": brand,
     }
 
 

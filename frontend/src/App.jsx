@@ -8,6 +8,7 @@ import Brand from './pages/Brand'
 import Pricing from './pages/Pricing'
 import Share from './pages/Share'
 import { TermsPage, PrivacyPage } from './pages/Legal'
+import PropertyLanding from './pages/PropertyLanding'
 
 function ProtectedRoute({ children }) {
   const { isSignedIn, isLoaded } = useAuth()
@@ -24,6 +25,7 @@ export default function App() {
       <Route path="/share/:jobId" element={<Share />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/p/:jobId" element={<PropertyLanding />} />
       <Route element={<Layout />}>
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/generate" element={<ProtectedRoute><Generate /></ProtectedRoute>} />
