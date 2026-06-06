@@ -11,9 +11,25 @@ from app.models.property import PropertyData
 
 def detect_portal(url: str) -> str:
     portals = [
-        "zonaprop.com.ar", "argenprop.com", "inmuebles24.com",
-        "idealista.com", "fotocasa.es", "properati.com",
-        "mercadolibre.com", "infocasas.com.uy",
+        # Argentina
+        "zonaprop.com.ar", "argenprop.com", "properati.com.ar",
+        "mercadolibre.com.ar", "navent.com",
+        # México
+        "inmuebles24.com", "lamudi.com.mx", "vivanuncios.com.mx",
+        "propiedades.com",
+        # España
+        "idealista.com", "fotocasa.es", "habitaclia.com", "pisos.com",
+        "yaencontre.com",
+        # Uruguay
+        "infocasas.com.uy", "gallito.com.uy", "mercadolibre.com.uy",
+        # Chile
+        "portalinmobiliario.com", "mercadolibre.cl", "toctoc.com",
+        # Colombia
+        "metrocuadrado.com", "fincaraiz.com.co", "mercadolibre.com.co",
+        # Peru
+        "urbania.pe", "adondevivir.com", "mercadolibre.com.pe",
+        # Genérico
+        "mercadolibre.com", "properati.com",
     ]
     for p in portals:
         if p in url:
@@ -21,12 +37,32 @@ def detect_portal(url: str) -> str:
     return "generic"
 
 
+def _country_code_for_url(url: str) -> str:
+    """Elige el país de ScraperAPI según el portal para mejor tasa de éxito."""
+    if any(p in url for p in ["zonaprop", "argenprop", "properati.com.ar", "mercadolibre.com.ar"]):
+        return "ar"
+    if any(p in url for p in ["inmuebles24", "lamudi.com.mx", "vivanuncios", "mercadolibre.com.mx"]):
+        return "mx"
+    if any(p in url for p in ["idealista.com", "fotocasa", "habitaclia", "pisos.com", "yaencontre"]):
+        return "es"
+    if any(p in url for p in ["infocasas", "gallito", "mercadolibre.com.uy"]):
+        return "uy"
+    if any(p in url for p in ["portalinmobiliario", "toctoc", "mercadolibre.cl"]):
+        return "cl"
+    if any(p in url for p in ["metrocuadrado", "fincaraiz", "mercadolibre.com.co"]):
+        return "co"
+    if any(p in url for p in ["urbania", "adondevivir", "mercadolibre.com.pe"]):
+        return "pe"
+    return "ar"
+
+
 async def _fetch_with_scraperapi(url: str) -> str:
+    country = _country_code_for_url(url)
     api_url = (
         f"https://api.scraperapi.com"
         f"?api_key={settings.SCRAPERAPI_KEY}"
         f"&url={quote_plus(url)}"
-        f"&country_code=ar"
+        f"&country_code={country}"
         f"&render=true"
     )
     async with httpx.AsyncClient(timeout=90) as client:
@@ -109,15 +145,45 @@ def _walk_json_for_photos(obj, photos: list, depth: int = 0):
 
 def _is_property_photo(url: str) -> bool:
     url_lower = url.lower()
-    # Excluir logos, iconos, mapas, etc.
-    bad = ["logo", "icon", "avatar", "banner", "map", "mapa", "sprite", "pixel",
-           "tracking", "analytics", "facebook", "twitter", "whatsapp", "placeholder",
-           "1x1", "blank", "loading", "favicon"]
+    # Excluir logos, iconos, mapas, ads, etc.
+    bad = [
+        "logo", "icon", "avatar", "banner", "map", "mapa", "sprite", "pixel",
+        "tracking", "analytics", "facebook", "twitter", "whatsapp", "placeholder",
+        "1x1", "blank", "loading", "favicon", "badge", "star", "rating",
+        "googletagmanager", "doubleclick", "googlesyndication", "adsense",
+        "gstatic.com/maps", "staticmap",
+    ]
     if any(b in url_lower for b in bad):
         return False
-    # Debe parecer una imagen de propiedad
-    good = ["foto", "photo", "cdn", "media", "img", "image", "picture", "listing",
-            "propiedad", "property", "inmueble", "real-estate", "zonaprop", "argenprop"]
+    # CDNs y dominios conocidos de portales inmobiliarios
+    trusted_domains = [
+        # Argentina
+        "zonaprop", "argenprop", "navent", "properati",
+        # España
+        "idealista", "fotocasa", "habitaclia",
+        # México
+        "inmuebles24", "lamudi",
+        # Uruguay
+        "infocasas", "gallito",
+        # Chile
+        "portalinmobiliario", "toctoc",
+        # Colombia
+        "metrocuadrado", "fincaraiz",
+        # Perú
+        "urbania", "adondevivir",
+        # CDNs genéricos
+        "mlstatic.com", "mercadolibre",
+        "cloudinary", "cloudfront", "akamaized",
+        "imgix", "images.cdn",
+    ]
+    if any(d in url_lower for d in trusted_domains):
+        return True
+    # Palabras clave en la URL
+    good = [
+        "foto", "photo", "cdn", "media", "img", "image", "picture",
+        "listing", "propiedad", "property", "inmueble", "real-estate",
+        "vivienda", "piso", "departamento", "casa", "appartement",
+    ]
     return any(g in url_lower for g in good)
 
 
@@ -222,24 +288,29 @@ def _parse_property(soup: BeautifulSoup, html: str, url: str, portal: str) -> Pr
     body_text = soup.get_text(" ", strip=True)
 
     area = None
-    m = re.search(r"(\d+[\.,]?\d*)\s*m²", body_text, re.I)
-    if m:
-        area = float(m.group(1).replace(",", "."))
+    for pattern in [r"(\d+[\.,]?\d*)\s*m²", r"(\d+[\.,]?\d*)\s*m2", r"(\d+[\.,]?\d*)\s*metros?\s*cuadrados?"]:
+        m2 = re.search(pattern, body_text, re.I)
+        if m2:
+            area = float(m2.group(1).replace(",", "."))
+            break
 
     rooms = None
-    m = re.search(r"(\d+)\s*(amb(?:ientes?)?|cuartos?|dormitorios?|habitaciones?|recámaras?)", body_text, re.I)
-    if m:
-        rooms = int(m.group(1))
+    m2 = re.search(
+        r"(\d+)\s*(amb(?:ientes?)?|cuartos?|dormitorios?|habitaciones?|recámaras?|bedrooms?|chambres?|zimmer)",
+        body_text, re.I
+    )
+    if m2:
+        rooms = int(m2.group(1))
 
     bathrooms = None
-    m = re.search(r"(\d+)\s*ba[ñn]os?", body_text, re.I)
-    if m:
-        bathrooms = int(m.group(1))
+    m2 = re.search(r"(\d+)\s*ba[ñn]os?|(\d+)\s*bathrooms?|(\d+)\s*wc", body_text, re.I)
+    if m2:
+        bathrooms = int(next(g for g in m2.groups() if g))
 
     parking = None
-    m = re.search(r"(\d+)\s*(cocheras?|garages?|estacionamientos?)", body_text, re.I)
-    if m:
-        parking = int(m.group(1))
+    m2 = re.search(r"(\d+)\s*(cocheras?|garages?|estacionamientos?|plazas?\s*de\s*garaje|parkings?)", body_text, re.I)
+    if m2:
+        parking = int(m2.group(1))
 
     return PropertyData(
         url=url,
