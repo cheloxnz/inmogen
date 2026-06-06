@@ -201,9 +201,11 @@ export default function Dashboard() {
   }
 
   async function confirmDelete() {
+    const current = confirm
+    setConfirm(null) // cerrar modal inmediatamente
     try {
-      if (confirm.type === 'one') {
-        await deleteJob(userId, confirm.jobId)
+      if (current.type === 'one') {
+        await deleteJob(userId, current.jobId)
         toast.success('Generación eliminada')
         const newTotal = total - 1
         const newPages = Math.max(1, Math.ceil(newTotal / PER_PAGE))
@@ -220,8 +222,6 @@ export default function Dashboard() {
       }
     } catch {
       toast.error('Error al eliminar')
-    } finally {
-      setConfirm(null)
     }
   }
 
