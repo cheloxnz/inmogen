@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useUser } from '@clerk/clerk-react'
 import { Link } from 'react-router-dom'
-import { Image, CreditCard, ArrowRight, CheckCircle, Clock, XCircle, Download, ChevronDown, ChevronUp, Trash2, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react'
-import { getMe, listJobs, deleteJob, deleteAllJobs } from '../lib/api'
+import { Image, CreditCard, ArrowRight, CheckCircle, Clock, XCircle, Download, ChevronDown, ChevronUp, Trash2, ChevronLeft, ChevronRight, AlertTriangle, Gift, Copy } from 'lucide-react'
+import { getMe, listJobs, deleteJob, deleteAllJobs, getReferralInfo } from '../lib/api'
 import toast from 'react-hot-toast'
 
 const PER_PAGE = 10
@@ -180,7 +180,8 @@ export default function Dashboard() {
   const [pages, setPages] = useState(1)
   const [page, setPage] = useState(1)
   const [loadingData, setLoadingData] = useState(true)
-  const [confirm, setConfirm] = useState(null) // null | { type: 'one', jobId } | { type: 'all' }
+  const [confirm, setConfirm] = useState(null)
+  const [referral, setReferral] = useState(null)
 
   async function fetchJobs(p = page) {
     if (!userId) return
@@ -193,14 +194,20 @@ export default function Dashboard() {
   useEffect(() => {
     if (!userId) return
     setLoadingData(true)
-    Promise.all([getMe(userId), listJobs(userId, 1, PER_PAGE)])
-      .then(([u, res]) => {
-        setUserData(u)
-        setJobs(res.jobs)
-        setTotal(res.total)
-        setPages(res.pages)
-      })
-      .finally(() => setLoadingData(false))
+    // Pasar ref code si existe en localStorage (usuario nuevo)
+    const ref = localStorage.getItem('inmogen_ref') || ''
+    Promise.all([
+      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8003'}/users/me${ref ? `?ref=${ref}` : ''}`, { headers: { 'x-user-id': userId } }).then(r => r.json()),
+      listJobs(userId, 1, PER_PAGE),
+      getReferralInfo(userId).catch(() => null),
+    ]).then(([u, res, ref]) => {
+      setUserData(u)
+      setJobs(res.jobs)
+      setTotal(res.total)
+      setPages(res.pages)
+      setReferral(ref)
+      if (localStorage.getItem('inmogen_ref')) localStorage.removeItem('inmogen_ref')
+    }).finally(() => setLoadingData(false))
   }, [userId])
 
   async function handleDeleteOne(jobId) {
@@ -289,6 +296,34 @@ export default function Dashboard() {
             <Link to="/brand" className="inline-flex items-center gap-2 px-4 py-2 bg-yellow-400 text-gray-900 font-semibold rounded-xl text-sm hover:bg-yellow-300 transition-colors">
               Configurar ahora <ArrowRight size={14} />
             </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Referidos */}
+      {referral && (
+        <div className="mb-8 bg-gray-900 border border-gray-800 rounded-2xl p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Gift size={18} className="text-yellow-400" />
+            <h2 className="font-semibold text-white">Invitá y ganás créditos</h2>
+            {referral.referrals_count > 0 && (
+              <span className="ml-auto text-xs text-green-400 font-semibold">
+                {referral.referrals_count} referido{referral.referrals_count !== 1 ? 's' : ''} · +{referral.credits_earned} créditos ganados
+              </span>
+            )}
+          </div>
+          <p className="text-gray-400 text-sm mb-4">
+            Por cada amigo que se registre con tu link recibís <span className="text-yellow-400 font-semibold">{referral.credits_per_referral} créditos</span>. Ellos también reciben <span className="text-yellow-400 font-semibold">{referral.credits_new_user} créditos extra</span>.
+          </p>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-gray-300 font-mono truncate">
+              {referral.ref_url}
+            </div>
+            <button
+              onClick={() => { navigator.clipboard.writeText(referral.ref_url); toast.success('¡Link copiado!', { icon: '🔗' }) }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-yellow-400 text-gray-900 font-semibold rounded-xl hover:bg-yellow-300 transition-colors text-sm flex-shrink-0">
+              <Copy size={14} /> Copiar
+            </button>
           </div>
         </div>
       )}

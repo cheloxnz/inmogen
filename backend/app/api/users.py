@@ -1,25 +1,65 @@
+import hashlib
+import logging
 from fastapi import APIRouter, Header, HTTPException
 from datetime import datetime
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.brand import BrandConfig
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["users"])
 
 
+def _generate_ref_code(clerk_id: str) -> str:
+    """Genera un código de referido corto y único basado en el clerk_id."""
+    return hashlib.md5(clerk_id.encode()).hexdigest()[:8].upper()
+
+
 @router.get("/me")
-async def get_me(x_user_id: str = Header(...)):
+async def get_me(x_user_id: str = Header(...), ref: str = ""):
     db = get_db()
     user = await db.users.find_one({"clerk_id": x_user_id})
     if not user:
-        # Crear usuario con créditos de prueba
+        # Usuario nuevo — crear con créditos de prueba
+        ref_code = _generate_ref_code(x_user_id)
+        bonus_credits = 0
+
+        # Procesar código de referido si vino con uno
+        if ref:
+            referrer = await db.users.find_one({"ref_code": ref})
+            if referrer and referrer["clerk_id"] != x_user_id:
+                bonus_credits = settings.REFERRAL_CREDITS_NEW_USER
+                # Dar créditos al referidor
+                await db.users.update_one(
+                    {"clerk_id": referrer["clerk_id"]},
+                    {
+                        "$inc": {"credits": settings.REFERRAL_CREDITS_REFERRER, "referrals_count": 1},
+                        "$set": {"updated_at": datetime.utcnow()},
+                    }
+                )
+                logger.info("Referido: %s → referidor %s (+%d créditos)", x_user_id, referrer["clerk_id"], settings.REFERRAL_CREDITS_REFERRER)
+
         user = {
             "clerk_id": x_user_id,
-            "credits": 3,
+            "credits": 3 + bonus_credits,
             "plan": "trial",
             "brand": None,
+            "ref_code": ref_code,
+            "referred_by": ref if ref else None,
+            "referrals_count": 0,
             "created_at": datetime.utcnow(),
         }
         await db.users.insert_one(user)
+
+    # Asegurar que el usuario existente tenga ref_code
+    elif not user.get("ref_code"):
+        ref_code = _generate_ref_code(x_user_id)
+        await db.users.update_one(
+            {"clerk_id": x_user_id},
+            {"$set": {"ref_code": ref_code, "referrals_count": 0}},
+        )
+        user["ref_code"] = ref_code
+
     user["id"] = str(user.pop("_id"))
     return user
 
@@ -33,6 +73,24 @@ async def update_brand(brand: BrandConfig, x_user_id: str = Header(...)):
         upsert=True,
     )
     return {"ok": True}
+
+
+@router.get("/referral")
+async def get_referral_info(x_user_id: str = Header(...)):
+    """Retorna código de referido, link y stats."""
+    db = get_db()
+    user = await db.users.find_one({"clerk_id": x_user_id})
+    if not user:
+        raise HTTPException(404, "Usuario no encontrado")
+    ref_code = user.get("ref_code") or _generate_ref_code(x_user_id)
+    return {
+        "ref_code": ref_code,
+        "ref_url": f"https://inmogen-ia.com?ref={ref_code}",
+        "referrals_count": user.get("referrals_count", 0),
+        "credits_earned": user.get("referrals_count", 0) * settings.REFERRAL_CREDITS_REFERRER,
+        "credits_per_referral": settings.REFERRAL_CREDITS_REFERRER,
+        "credits_new_user": settings.REFERRAL_CREDITS_NEW_USER,
+    }
 
 
 @router.get("/jobs")

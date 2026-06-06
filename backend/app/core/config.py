@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     STRIPE_PRICE_STARTER: str = ""
     STRIPE_PRICE_PRO: str = ""
     STRIPE_PRICE_SCALE: str = ""
+    STRIPE_PRICE_PACK_10: str = ""
+    STRIPE_PRICE_PACK_25: str = ""
+    STRIPE_PRICE_PACK_50: str = ""
+    STRIPE_PRICE_PACK_100: str = ""
+    REFERRAL_CREDITS_REFERRER: int = 5   # créditos para quien refirió
+    REFERRAL_CREDITS_NEW_USER: int = 2   # créditos extra para el nuevo usuario
 
     CLERK_SECRET_KEY: str
     CLERK_PUBLISHABLE_KEY: str = ""

@@ -1,12 +1,18 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { SignInButton, SignUpButton, useAuth } from '@clerk/clerk-react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import { Zap, Clock, Palette, Download, Image, RefreshCw, Sparkles, ChevronRight, Star, Check } from 'lucide-react'
 import { PricingModal } from './Pricing'
 
 export default function Home() {
   const { isSignedIn } = useAuth()
   const [showPricing, setShowPricing] = useState(false)
+  const [searchParams] = useSearchParams()
+
+  useEffect(() => {
+    const ref = searchParams.get('ref')
+    if (ref) localStorage.setItem('inmogen_ref', ref)
+  }, [searchParams])
 
   if (isSignedIn) return <Navigate to="/dashboard" replace />
 

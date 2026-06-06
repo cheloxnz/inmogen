@@ -7,13 +7,21 @@ from app.core.database import get_db
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/billing", tags=["billing"])
 
-# price_id se configura en Stripe Dashboard → Products → copiar el Price ID (price_xxx)
 PLANS = {
     "starter": {"credits": 30,   "price_id": settings.STRIPE_PRICE_STARTER},
     "pro":     {"credits": 100,  "price_id": settings.STRIPE_PRICE_PRO},
     "scale":   {"credits": 9999, "price_id": settings.STRIPE_PRICE_SCALE},
 }
 
+CREDIT_PACKS = {
+    "pack_10":  {"credits": 10,  "price_id": settings.STRIPE_PRICE_PACK_10},
+    "pack_25":  {"credits": 25,  "price_id": settings.STRIPE_PRICE_PACK_25},
+    "pack_50":  {"credits": 50,  "price_id": settings.STRIPE_PRICE_PACK_50},
+    "pack_100": {"credits": 100, "price_id": settings.STRIPE_PRICE_PACK_100},
+}
+
+
+# ── Suscripciones mensuales ───────────────────────────────────────────────────
 
 @router.post("/checkout")
 async def create_checkout(plan: str, x_user_id: str = Header(...)):
@@ -27,15 +35,35 @@ async def create_checkout(plan: str, x_user_id: str = Header(...)):
         line_items=[{"price": PLANS[plan]["price_id"], "quantity": 1}],
         success_url="https://inmogen-ia.com/dashboard?success=1",
         cancel_url="https://inmogen-ia.com/pricing",
-        # Pasamos user_id y plan en client_reference_id Y metadata
-        # para tenerlo disponible tanto en checkout.session.completed
-        # como en invoice.paid (renovaciones mensuales)
         client_reference_id=x_user_id,
         metadata={"user_id": x_user_id, "plan": plan},
         subscription_data={"metadata": {"user_id": x_user_id, "plan": plan}},
     )
     return {"checkout_url": session.url}
 
+
+# ── Paquetes de créditos (one-time) ──────────────────────────────────────────
+
+@router.post("/checkout-pack")
+async def create_pack_checkout(pack: str, x_user_id: str = Header(...)):
+    if pack not in CREDIT_PACKS:
+        raise HTTPException(400, "Pack inválido")
+    price_id = CREDIT_PACKS[pack]["price_id"]
+    if not price_id:
+        raise HTTPException(500, f"Price ID para '{pack}' no configurado en el servidor")
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+    session = stripe.checkout.Session.create(
+        mode="payment",
+        line_items=[{"price": price_id, "quantity": 1}],
+        success_url="https://inmogen-ia.com/dashboard?credits=1",
+        cancel_url="https://inmogen-ia.com/pricing",
+        client_reference_id=x_user_id,
+        metadata={"user_id": x_user_id, "pack": pack, "credits": str(CREDIT_PACKS[pack]["credits"])},
+    )
+    return {"checkout_url": session.url}
+
+
+# ── Webhook ───────────────────────────────────────────────────────────────────
 
 @router.post("/webhook")
 async def stripe_webhook(request: Request):
@@ -46,9 +74,7 @@ async def stripe_webhook(request: Request):
         raise HTTPException(500, "STRIPE_WEBHOOK_SECRET no configurado")
 
     try:
-        event = stripe.Webhook.construct_event(
-            payload, sig, settings.STRIPE_WEBHOOK_SECRET
-        )
+        event = stripe.Webhook.construct_event(payload, sig, settings.STRIPE_WEBHOOK_SECRET)
     except stripe.error.SignatureVerificationError as e:
         logger.warning("Stripe webhook signature inválida: %s", e)
         raise HTTPException(400, "Firma inválida")
@@ -58,7 +84,6 @@ async def stripe_webhook(request: Request):
 
     event_type = event["type"]
     logger.info("Stripe event: %s", event_type)
-
     db = get_db()
 
     # ── Primera suscripción ──────────────────────────────────────────────────
@@ -66,24 +91,35 @@ async def stripe_webhook(request: Request):
         obj = event["data"]["object"]
         meta = obj.get("metadata", {})
         user_id = meta.get("user_id") or obj.get("client_reference_id")
-        plan = meta.get("plan")
+        mode = obj.get("mode")
 
-        if not user_id or not plan or plan not in PLANS:
-            logger.warning("checkout.session.completed sin user_id/plan válido: %s", meta)
-            return {"ok": True}
+        if mode == "subscription":
+            plan = meta.get("plan")
+            if user_id and plan and plan in PLANS:
+                credits = PLANS[plan]["credits"]
+                logger.info("Suscripción: %d créditos plan=%s user=%s", credits, plan, user_id)
+                await db.users.update_one(
+                    {"clerk_id": user_id},
+                    {"$set": {"plan": plan, "credits": credits}},
+                    upsert=True,
+                )
 
-        credits = PLANS[plan]["credits"]
-        logger.info("Asignando %d créditos plan=%s a user=%s", credits, plan, user_id)
-        await db.users.update_one(
-            {"clerk_id": user_id},
-            {"$set": {"plan": plan, "credits": credits}},
-            upsert=True,
-        )
+        elif mode == "payment":
+            # Pack de créditos one-time
+            pack = meta.get("pack")
+            credits_str = meta.get("credits", "0")
+            credits = int(credits_str) if credits_str.isdigit() else 0
+            if user_id and credits > 0:
+                logger.info("Pack: +%d créditos user=%s", credits, user_id)
+                await db.users.update_one(
+                    {"clerk_id": user_id},
+                    {"$inc": {"credits": credits}},
+                    upsert=True,
+                )
 
     # ── Renovación mensual ───────────────────────────────────────────────────
     elif event_type == "invoice.paid":
         obj = event["data"]["object"]
-        # En renovaciones el metadata está en la suscripción
         sub_id = obj.get("subscription")
         if sub_id:
             stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -94,22 +130,21 @@ async def stripe_webhook(request: Request):
                 plan = meta.get("plan")
                 if user_id and plan and plan in PLANS:
                     credits = PLANS[plan]["credits"]
-                    logger.info("Renovación: asignando %d créditos plan=%s a user=%s", credits, plan, user_id)
+                    logger.info("Renovación: %d créditos plan=%s user=%s", credits, plan, user_id)
                     await db.users.update_one(
                         {"clerk_id": user_id},
                         {"$set": {"plan": plan, "credits": credits}},
                         upsert=True,
                     )
             except Exception as e:
-                logger.error("Error recuperando suscripción en invoice.paid: %s", e)
+                logger.error("Error en invoice.paid: %s", e)
 
     # ── Cancelación ─────────────────────────────────────────────────────────
     elif event_type == "customer.subscription.deleted":
         obj = event["data"]["object"]
-        meta = obj.get("metadata", {})
-        user_id = meta.get("user_id")
+        user_id = obj.get("metadata", {}).get("user_id")
         if user_id:
-            logger.info("Suscripción cancelada para user=%s", user_id)
+            logger.info("Cancelación user=%s", user_id)
             await db.users.update_one(
                 {"clerk_id": user_id},
                 {"$set": {"plan": "free", "credits": 0}},
@@ -120,7 +155,6 @@ async def stripe_webhook(request: Request):
 
 @router.get("/status")
 async def billing_status(x_user_id: str = Header(...)):
-    """Retorna créditos y plan actual del usuario."""
     db = get_db()
     user = await db.users.find_one({"clerk_id": x_user_id})
     if not user:

@@ -77,3 +77,15 @@ export async function createCheckout(userId, plan) {
   const { data } = await api.post(`/billing/checkout?plan=${plan}`)
   return data
 }
+
+export async function createPackCheckout(userId, pack) {
+  const api = createApi(userId)
+  const { data } = await api.post(`/billing/checkout-pack?pack=${pack}`)
+  return data
+}
+
+export async function getReferralInfo(userId) {
+  const api = createApi(userId)
+  const { data } = await api.get('/users/referral')
+  return data
+}

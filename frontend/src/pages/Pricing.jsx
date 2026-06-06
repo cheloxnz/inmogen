@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useUser } from '@clerk/clerk-react'
 import { Check, Zap, X, Image, Download, Palette, RefreshCw, FileImage, Star } from 'lucide-react'
-import { createCheckout } from '../lib/api'
+import { createCheckout, createPackCheckout } from '../lib/api'
 import toast from 'react-hot-toast'
 
 const PLANS = [
@@ -70,6 +70,7 @@ function PricingContent({ onClose }) {
   const { user } = useUser()
   const [tab, setTab] = useState('plans')
   const [loadingPlan, setLoadingPlan] = useState(null)
+  const [loadingPack, setLoadingPack] = useState(null)
 
   async function handleCheckout(planId) {
     if (!user) return toast.error('Iniciá sesión para continuar')
@@ -81,6 +82,20 @@ function PricingContent({ onClose }) {
       toast.error('Error al crear sesión de pago')
     } finally {
       setLoadingPlan(null)
+    }
+  }
+
+  async function handlePackCheckout(packId) {
+    if (!user) return toast.error('Iniciá sesión para continuar')
+    setLoadingPack(packId)
+    try {
+      const { checkout_url } = await createPackCheckout(user.id, packId)
+      window.location.href = checkout_url
+    } catch (err) {
+      const msg = err?.response?.data?.detail || 'Error al crear sesión de pago'
+      toast.error(msg)
+    } finally {
+      setLoadingPack(null)
     }
   }
 
@@ -180,10 +195,11 @@ function PricingContent({ onClose }) {
                   <p className="text-xs text-gray-500">pago único</p>
                 </div>
                 <button
-                  onClick={() => toast('Próximamente — escribinos a hola@inmogen-ia.com', { icon: '⚡' })}
-                  className="px-4 py-2 bg-yellow-400 text-gray-900 font-semibold rounded-xl hover:bg-yellow-300 transition-colors text-sm whitespace-nowrap"
+                  onClick={() => handlePackCheckout(pack.id)}
+                  disabled={loadingPack === pack.id}
+                  className="px-4 py-2 bg-yellow-400 text-gray-900 font-semibold rounded-xl hover:bg-yellow-300 transition-colors text-sm whitespace-nowrap disabled:opacity-60"
                 >
-                  Comprar
+                  {loadingPack === pack.id ? 'Redirigiendo...' : 'Comprar'}
                 </button>
               </div>
             ))}
