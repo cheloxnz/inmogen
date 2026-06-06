@@ -1,3 +1,4 @@
+import logging
 import os
 import zipfile
 from datetime import datetime
@@ -8,6 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.brand import BrandConfig
 from app.services.image_generator import generate_creatives as pillow_creatives
@@ -18,10 +20,50 @@ from app.services.scraper import scrape_property
 import httpx
 import asyncio
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/generate", tags=["generate"])
 
 STATIC_DIR = os.environ.get("STATIC_DIR", "/opt/inmogen/backend/static")
 API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.inmogen-ia.com")
+
+
+def _cloudinary_enabled() -> bool:
+    return bool(
+        settings.CLOUDINARY_CLOUD_NAME
+        and settings.CLOUDINARY_API_KEY
+        and settings.CLOUDINARY_API_SECRET
+    )
+
+
+async def _save_image(img_bytes: bytes, job_id: str, entry: str) -> str:
+    """Guarda la imagen en Cloudinary (si está configurado) o en disco. Retorna la URL."""
+    if _cloudinary_enabled():
+        try:
+            import cloudinary
+            import cloudinary.uploader
+            cloudinary.config(
+                cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+                api_key=settings.CLOUDINARY_API_KEY,
+                api_secret=settings.CLOUDINARY_API_SECRET,
+            )
+            result = cloudinary.uploader.upload(
+                BytesIO(img_bytes),
+                public_id=f"inmogen/jobs/{job_id}/{entry}",
+                resource_type="image",
+                format="jpg",
+                overwrite=True,
+            )
+            return result["secure_url"]
+        except Exception as e:
+            logger.warning("Cloudinary upload falló, usando disco: %s", e)
+
+    # Fallback a disco
+    job_dir = os.path.join(STATIC_DIR, "jobs", job_id)
+    os.makedirs(job_dir, exist_ok=True)
+    img_path = os.path.join(job_dir, f"{entry}.jpg")
+    with open(img_path, "wb") as f:
+        f.write(img_bytes)
+    return f"{API_BASE_URL}/static/jobs/{job_id}/{entry}.jpg"
 
 VALID_FORMATS = set(FORMATS.keys())
 VALID_TYPES = {"destacado", "infografia", "hook_attack", "storytelling",
@@ -151,13 +193,7 @@ async def regenerate_slot(job_id: str, req: RegenerateRequest, x_user_id: str = 
     img_bytes = apply_overlay(bg_bytes, logo_img, brand, prop, ct, fmt, custom_text=req.custom_text)
 
     entry = f"{ct}_{idx}_{fmt}"
-    job_dir = os.path.join(STATIC_DIR, "jobs", job_id)
-    os.makedirs(job_dir, exist_ok=True)
-    img_path = os.path.join(job_dir, f"{entry}.jpg")
-    with open(img_path, "wb") as f:
-        f.write(img_bytes)
-
-    new_url = f"{API_BASE_URL}/static/jobs/{job_id}/{entry}.jpg"
+    new_url = await _save_image(img_bytes, job_id, entry)
     creatives = list(job.get("creatives", []))
     creatives_fmt = list(job.get("creatives_fmt", []))
 
@@ -184,13 +220,31 @@ async def download_zip(job_id: str):
     if job.get("status") != "done":
         raise HTTPException(400, "Job no completado")
 
+    creatives_urls = job.get("creatives", [])
+    creatives_fmt = job.get("creatives_fmt", [])
     job_dir = os.path.join(STATIC_DIR, "jobs", job_id)
+
     zip_buf = BytesIO()
-    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for entry in job.get("creatives_fmt", []):
-            img_path = os.path.join(job_dir, f"{entry}.jpg")
-            if os.path.exists(img_path):
-                zf.write(img_path, f"{entry}.jpg")
+    async with httpx.AsyncClient(timeout=30) as client:
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for i, entry in enumerate(creatives_fmt):
+                img_bytes = None
+                # Intentar leer del disco primero (más rápido)
+                local_path = os.path.join(job_dir, f"{entry}.jpg")
+                if os.path.exists(local_path):
+                    with open(local_path, "rb") as f:
+                        img_bytes = f.read()
+                # Si no hay en disco (Cloudinary), descargar desde URL
+                elif i < len(creatives_urls):
+                    try:
+                        r = await client.get(creatives_urls[i])
+                        if r.status_code == 200:
+                            img_bytes = r.content
+                    except Exception as e:
+                        logger.warning("No se pudo descargar %s para ZIP: %s", creatives_urls[i], e)
+                if img_bytes:
+                    zf.writestr(f"{entry}.jpg", img_bytes)
+
     zip_buf.seek(0)
     return StreamingResponse(
         zip_buf,
@@ -240,9 +294,6 @@ async def _process_job(job_id: str, req: GenerateRequest, x_user_id: str):
             prop.photos = req.selected_photos
         await update({"status": "generating", "property_data": prop.model_dump()})
 
-        job_dir = os.path.join(STATIC_DIR, "jobs", job_id)
-        os.makedirs(job_dir, exist_ok=True)
-
         logo_img = None
         if req.brand.logo_url:
             logo_bytes = await _fetch_logo_bytes(req.brand.logo_url)
@@ -271,10 +322,7 @@ async def _process_job(job_id: str, req: GenerateRequest, x_user_id: str):
                 continue
 
             img_bytes = apply_overlay(bg_bytes, logo_img, req.brand, prop, ct, fmt, custom_text=slot.custom_text)
-            img_path = os.path.join(job_dir, f"{entry}.jpg")
-            with open(img_path, "wb") as f:
-                f.write(img_bytes)
-            url = f"{API_BASE_URL}/static/jobs/{job_id}/{entry}.jpg"
+            url = await _save_image(img_bytes, job_id, entry)
             urls.append(url)
             fmt_entries.append(entry)
             await db.jobs.update_one(
