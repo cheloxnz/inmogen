@@ -19,6 +19,9 @@ class Settings(BaseSettings):
 
     STRIPE_SECRET_KEY: str
     STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_PRICE_STARTER: str = ""
+    STRIPE_PRICE_PRO: str = ""
+    STRIPE_PRICE_SCALE: str = ""
 
     CLERK_SECRET_KEY: str
     CLERK_PUBLISHABLE_KEY: str = ""
