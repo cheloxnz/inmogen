@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useUser } from '@clerk/clerk-react'
-import { Link2, Loader2, CheckCircle, XCircle, Download, Search, ChevronRight, RefreshCw } from 'lucide-react'
+import { Link2, Loader2, CheckCircle, XCircle, Download, Search, ChevronRight, RefreshCw, Share2 } from 'lucide-react'
 
 async function downloadImage(url, filename) {
   try {
@@ -213,7 +213,7 @@ function SlotRow({ slot, index, onChange, onRemove, error }) {
   )
 }
 
-function StepConfig({ fmt, setFmt, slots, setSlots, selectedPhotos, onGenerate, loading, isRunning, onBack, slotErrors }) {
+function StepConfig({ fmt, setFmt, slots, setSlots, selectedPhotos, onGenerate, loading, isRunning, onBack, slotErrors, brand }) {
   function addSlot() {
     setSlots(prev => [...prev, { type: 'destacado', text: '' }])
   }
@@ -286,6 +286,11 @@ function StepConfig({ fmt, setFmt, slots, setSlots, selectedPhotos, onGenerate, 
         </p>
       </div>
 
+      {/* Preview mockup */}
+      {selectedPhotos.length > 0 && brand && (
+        <BrandPreview photo={selectedPhotos[0]} brand={brand} />
+      )}
+
       <div className="flex gap-3">
         <button type="button" onClick={onBack}
           className="px-4 py-3 border border-gray-700 text-gray-400 rounded-xl hover:border-gray-500 transition-colors text-sm">
@@ -300,6 +305,38 @@ function StepConfig({ fmt, setFmt, slots, setSlots, selectedPhotos, onGenerate, 
           {(loading || isRunning) && <Loader2 size={16} className="animate-spin" />}
           {isRunning ? 'Generando...' : `Generar ${slots.length} imagen${slots.length !== 1 ? 'es' : ''}`}
         </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Brand preview mockup ─────────────────────────────────────────────────────
+function BrandPreview({ photo, brand }) {
+
+  if (!brand) return null
+
+  return (
+    <div className="rounded-xl border border-gray-800 overflow-hidden">
+      <p className="text-xs text-gray-500 px-3 py-2 bg-gray-900 border-b border-gray-800">Vista previa aproximada</p>
+      <div className="relative aspect-square overflow-hidden max-h-48">
+        <img src={photo} alt="" className="w-full h-full object-cover" style={{ filter: 'brightness(0.75)' }} />
+        {/* Overlay de marca */}
+        <div className="absolute inset-0 flex flex-col justify-between p-3">
+          <div className="flex justify-end">
+            {brand.logo_url && (
+              <img src={brand.logo_url} alt="logo" className="h-6 object-contain" />
+            )}
+          </div>
+          <div className="rounded-lg p-2" style={{ backgroundColor: brand.primary_color + 'CC' }}>
+            <div className="h-2 rounded mb-1.5" style={{ backgroundColor: brand.secondary_color, width: '40%' }} />
+            <div className="h-1.5 rounded bg-white/40 mb-1 w-3/4" />
+            <div className="h-1.5 rounded bg-white/30 w-1/2" />
+            <p className="text-xs mt-1.5 font-semibold truncate" style={{ color: brand.text_color }}>
+              {brand.agency_name}
+            </p>
+            {brand.phone && <p className="text-xs opacity-70 truncate" style={{ color: brand.text_color }}>{brand.phone}</p>}
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -323,9 +360,14 @@ export default function Generate() {
   const [addingMore, setAddingMore] = useState(false)
   const [loading, setLoading] = useState(false)
   const [credits, setCredits] = useState(null)
+  const [brand, setBrand] = useState(null)
 
   useEffect(() => {
-    if (userId) getMe(userId).then(u => setCredits(u.credits))
+    if (userId) getMe(userId).then(u => { setCredits(u.credits); if (u.brand) setBrand(u.brand) })
+    // Pedir permiso de notificaciones al cargar
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
   }, [userId])
 
   useEffect(() => {
@@ -341,7 +383,7 @@ export default function Generate() {
     return () => clearInterval(interval)
   }, [job, userId])
 
-  // Cuando el job termina, persistir las URLs en los slots
+  // Cuando el job termina: persistir URLs + notificación
   useEffect(() => {
     if (job?.status !== 'done') return
     setSlots(prev => prev.map((slot, i) => ({
@@ -349,6 +391,25 @@ export default function Generate() {
       url: job.creatives?.[i] || slot.url || null,
       entry: job.creatives_fmt?.[i] || slot.entry || null,
     })))
+    // Restaurar título del tab
+    document.title = 'InmoGen'
+    // Toast persistente
+    toast.success('¡Creativos listos! Podés descargarlos.', { duration: 6000, icon: '🎨' })
+    // Notificación del navegador
+    if (Notification.permission === 'granted') {
+      new Notification('InmoGen — ¡Creativos listos!', {
+        body: 'Tus imágenes ya están generadas y listas para descargar.',
+        icon: '/favicon.ico',
+      })
+    }
+  }, [job?.status])
+
+  // Cambiar título del tab mientras genera
+  useEffect(() => {
+    if (!job) return
+    if (job.status === 'scraping') document.title = '⏳ Analizando propiedad… — InmoGen'
+    else if (job.status === 'generating') document.title = '🎨 Generando creativos… — InmoGen'
+    else if (job.status === 'error') document.title = '❌ Error — InmoGen'
   }, [job?.status])
 
   async function handleScrape(e) {
@@ -532,6 +593,7 @@ export default function Generate() {
             loading={loading}
             isRunning={isRunning}
             onBack={() => setStep(2)}
+            brand={brand}
           />
 
           {/* Job result */}
@@ -635,10 +697,19 @@ export default function Generate() {
                     </div>
                   )}
 
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <button onClick={() => setSlots(prev => [...prev, { type: 'destacado', text: '', url: null }])}
                       className="px-4 py-2.5 border border-gray-700 text-gray-400 rounded-xl hover:border-yellow-400 hover:text-yellow-400 transition-colors text-sm">
                       + Agregar ángulo
+                    </button>
+                    <button
+                      onClick={() => {
+                        const shareUrl = `${window.location.origin}/share/${job.id}`
+                        navigator.clipboard.writeText(shareUrl)
+                        toast.success('¡Link copiado!', { icon: '🔗' })
+                      }}
+                      className="flex items-center gap-2 px-4 py-2.5 border border-gray-700 text-gray-400 rounded-xl hover:border-blue-400 hover:text-blue-400 transition-colors text-sm">
+                      <Share2 size={14} /> Compartir
                     </button>
                     {job.zip_url && (
                       <a href={job.zip_url}

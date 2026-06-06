@@ -147,6 +147,26 @@ async def get_job_status(job_id: str, x_user_id: str = Header(...)):
     return job
 
 
+@router.get("/{job_id}/share")
+async def get_job_public(job_id: str):
+    """Endpoint público para compartir resultados — sin auth requerida."""
+    db = get_db()
+    job = await db.jobs.find_one({"_id": ObjectId(job_id)})
+    if not job:
+        raise HTTPException(404, "Job no encontrado")
+    if job.get("status") != "done":
+        raise HTTPException(400, "Job no completado")
+    return {
+        "id": str(job["_id"]),
+        "property_url": job.get("property_url"),
+        "property_data": job.get("property_data"),
+        "creatives": job.get("creatives", []),
+        "creatives_fmt": job.get("creatives_fmt", []),
+        "zip_url": job.get("zip_url"),
+        "created_at": job.get("created_at"),
+    }
+
+
 @router.post("/{job_id}/regenerate")
 async def regenerate_slot(job_id: str, req: RegenerateRequest, x_user_id: str = Header(...)):
     """Regenera una imagen individual de un job ya completado. Sin costo de créditos."""
