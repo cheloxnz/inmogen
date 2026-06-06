@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useUser } from '@clerk/clerk-react'
-import { Link2, Loader2, CheckCircle, XCircle, Download, Search, ChevronRight, RefreshCw, Share2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Link2, Loader2, CheckCircle, XCircle, Download, Search, ChevronRight, RefreshCw, Share2, Zap } from 'lucide-react'
 
 async function downloadImage(url, filename) {
   try {
@@ -546,6 +547,22 @@ export default function Generate() {
           </div>
         )}
       </div>
+
+      {/* Banner Gemini Key */}
+      {brand && !brand.gemini_api_key && step === 1 && (
+        <div className="mb-6 bg-yellow-400/5 border border-yellow-400/30 rounded-2xl p-4 flex items-center gap-4">
+          <div className="w-9 h-9 rounded-xl bg-yellow-400/10 flex items-center justify-center flex-shrink-0">
+            <Zap size={18} className="text-yellow-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-white text-sm font-semibold">Sin API Key de Gemini — calidad reducida</p>
+            <p className="text-gray-500 text-xs mt-0.5">Tus creativos se generarán con el motor básico. Agregá tu key gratis en 2 min para calidad publicitaria real.</p>
+          </div>
+          <Link to="/brand" className="flex-shrink-0 px-3 py-1.5 bg-yellow-400 text-gray-900 font-semibold rounded-lg text-xs hover:bg-yellow-300 transition-colors whitespace-nowrap">
+            Configurar →
+          </Link>
+        </div>
+      )}
 
       {/* Step indicator */}
       <div className="flex items-center gap-2 mb-8">

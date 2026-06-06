@@ -154,15 +154,33 @@ export default function Brand() {
         </Field>
 
         {/* Gemini API Key */}
-        <div className="rounded-2xl border border-yellow-400/30 bg-yellow-400/5 p-5">
+        <div className="rounded-2xl border-2 border-yellow-400/50 bg-yellow-400/5 p-5 shadow-lg shadow-yellow-400/5">
           <div className="flex items-center gap-2 mb-3">
             <Key size={18} className="text-yellow-400" />
             <span className="font-semibold text-white">API Key de Google Gemini</span>
             <span className="text-xs bg-yellow-400 text-gray-900 px-2 py-0.5 rounded-full font-bold ml-1">RECOMENDADO</span>
           </div>
-          <p className="text-gray-400 text-sm mb-4">
+          <p className="text-gray-400 text-sm mb-3">
             Con tu propia API Key de Google, los creativos se generan con <strong className="text-white">Gemini Imagen 3</strong> — calidad profesional, sin costo adicional para vos.
           </p>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="bg-gray-900/80 rounded-xl p-3 border border-gray-800">
+              <p className="text-gray-500 text-xs font-semibold mb-1.5">❌ Sin API Key</p>
+              <ul className="text-gray-500 text-xs space-y-1">
+                <li>· Motor básico de composición</li>
+                <li>· Fondos sólidos o simples</li>
+                <li>· Tipografía estándar</li>
+              </ul>
+            </div>
+            <div className="bg-yellow-400/5 rounded-xl p-3 border border-yellow-400/30">
+              <p className="text-yellow-400 text-xs font-semibold mb-1.5">✓ Con Gemini Imagen 3</p>
+              <ul className="text-gray-300 text-xs space-y-1">
+                <li>· Fondos IA fotorrealistas</li>
+                <li>· Composición publicitaria</li>
+                <li>· Calidad lista para Meta Ads</li>
+              </ul>
+            </div>
+          </div>
 
           {/* Instructivo */}
           <div className="bg-gray-900 rounded-xl p-4 mb-4 space-y-2">

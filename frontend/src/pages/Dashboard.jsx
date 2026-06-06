@@ -332,7 +332,7 @@ export default function Dashboard() {
         </Link>
       </div>
 
-      {/* Onboarding */}
+      {/* Onboarding: sin marca */}
       {userData && !userData.brand && (
         <div className="mb-6 bg-yellow-400/10 border border-yellow-400/30 rounded-2xl p-5 flex items-start gap-4">
           <div className="w-8 h-8 rounded-full bg-yellow-400 flex items-center justify-center text-gray-900 font-bold flex-shrink-0 mt-0.5">!</div>
@@ -341,6 +341,28 @@ export default function Dashboard() {
             <p className="text-gray-400 text-sm mb-3">Para generar creativos necesitás cargar el nombre de tu agencia, colores y datos de contacto.</p>
             <Link to="/brand" className="inline-flex items-center gap-2 px-4 py-2 bg-yellow-400 text-gray-900 font-semibold rounded-xl text-sm hover:bg-yellow-300 transition-colors">
               Configurar ahora <ArrowRight size={14} />
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Onboarding: sin Gemini key */}
+      {userData?.brand && !userData.brand.gemini_api_key && (
+        <div className="mb-6 bg-gray-900 border border-yellow-400/40 rounded-2xl p-5 flex items-start gap-4">
+          <div className="w-10 h-10 rounded-xl bg-yellow-400/10 flex items-center justify-center flex-shrink-0">
+            <Zap size={20} className="text-yellow-400" />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <p className="text-white font-semibold">Activá Gemini Imagen 3 — calidad profesional</p>
+              <span className="text-xs bg-yellow-400 text-gray-900 px-2 py-0.5 rounded-full font-bold">GRATIS</span>
+            </div>
+            <p className="text-gray-400 text-sm mb-3">
+              Sin tu API Key los creativos usan el motor básico. Con Gemini obtenés imágenes de calidad publicitaria real.
+              Tarda 2 minutos en configurarse desde Google AI Studio.
+            </p>
+            <Link to="/brand" className="inline-flex items-center gap-2 px-4 py-2 bg-yellow-400 text-gray-900 font-semibold rounded-xl text-sm hover:bg-yellow-300 transition-colors">
+              Agregar API Key <ArrowRight size={14} />
             </Link>
           </div>
         </div>
