@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useUser } from '@clerk/clerk-react'
 import { Link } from 'react-router-dom'
-import { Image, CreditCard, ArrowRight, CheckCircle, Clock, XCircle, Download, ChevronDown, ChevronUp } from 'lucide-react'
-import { getMe, listJobs } from '../lib/api'
+import { Image, CreditCard, ArrowRight, CheckCircle, Clock, XCircle, Download, ChevronDown, ChevronUp, Trash2, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react'
+import { getMe, listJobs, deleteJob, deleteAllJobs } from '../lib/api'
+import toast from 'react-hot-toast'
+
+const PER_PAGE = 10
 
 const STATUS_ICON = {
   done:       <CheckCircle size={13} className="text-green-400" />,
@@ -29,18 +32,52 @@ async function downloadImage(url, filename) {
   }
 }
 
-function JobCard({ job }) {
+function ConfirmModal({ message, onConfirm, onCancel }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-sm w-full">
+        <div className="flex items-center gap-3 mb-4">
+          <AlertTriangle size={20} className="text-red-400 flex-shrink-0" />
+          <p className="text-white text-sm">{message}</p>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={onCancel}
+            className="flex-1 py-2 border border-gray-700 text-gray-400 rounded-xl hover:border-gray-500 transition-colors text-sm">
+            Cancelar
+          </button>
+          <button onClick={onConfirm}
+            className="flex-1 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors text-sm font-semibold">
+            Eliminar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function JobCard({ job, onDelete }) {
   const [expanded, setExpanded] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const thumbs = (job.creatives || []).slice(0, 3)
   const extras = (job.creatives || []).length - 3
-  const shortUrl = job.property_url?.replace(/^https?:\/\/(www\.)?/, '').slice(0, 55)
-  const date = job.created_at ? new Date(job.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' }) : ''
+  const shortUrl = job.property_url?.replace(/^https?:\/\/(www\.)?/, '').slice(0, 50)
+  const date = job.created_at
+    ? new Date(job.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' })
+    : ''
+
+  async function handleDelete() {
+    setDeleting(true)
+    try {
+      await onDelete(job.id)
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden hover:border-gray-700 transition-colors">
-      {/* Card header */}
       <div className="p-4 flex gap-3 items-start">
-        {/* Thumbnails strip */}
+        {/* Thumbnails */}
         <div className="flex gap-1 flex-shrink-0">
           {thumbs.length > 0 ? thumbs.map((imgUrl, i) => (
             <div key={i} className="w-14 h-14 rounded-lg overflow-hidden bg-gray-800 flex-shrink-0">
@@ -89,6 +126,10 @@ function JobCard({ job }) {
               Ver
             </button>
           )}
+          <button onClick={handleDelete} disabled={deleting}
+            className="flex items-center gap-1 px-2.5 py-1.5 border border-gray-800 text-gray-600 rounded-lg text-xs hover:border-red-500 hover:text-red-400 transition-colors disabled:opacity-50">
+            <Trash2 size={11} />
+          </button>
         </div>
       </div>
 
@@ -124,62 +165,101 @@ export default function Dashboard() {
   const userId = user?.id
   const [userData, setUserData] = useState(null)
   const [jobs, setJobs] = useState([])
+  const [total, setTotal] = useState(0)
+  const [pages, setPages] = useState(1)
+  const [page, setPage] = useState(1)
   const [loadingData, setLoadingData] = useState(true)
+  const [confirm, setConfirm] = useState(null) // null | { type: 'one', jobId } | { type: 'all' }
+
+  async function fetchJobs(p = page) {
+    if (!userId) return
+    const res = await listJobs(userId, p, PER_PAGE)
+    setJobs(res.jobs)
+    setTotal(res.total)
+    setPages(res.pages)
+  }
 
   useEffect(() => {
     if (!userId) return
     setLoadingData(true)
-    Promise.all([getMe(userId), listJobs(userId)])
-      .then(([u, j]) => { setUserData(u); setJobs(j) })
+    Promise.all([getMe(userId), listJobs(userId, 1, PER_PAGE)])
+      .then(([u, res]) => {
+        setUserData(u)
+        setJobs(res.jobs)
+        setTotal(res.total)
+        setPages(res.pages)
+      })
       .finally(() => setLoadingData(false))
   }, [userId])
+
+  async function handleDeleteOne(jobId) {
+    setConfirm({ type: 'one', jobId })
+  }
+
+  async function handleDeleteAll() {
+    setConfirm({ type: 'all' })
+  }
+
+  async function confirmDelete() {
+    try {
+      if (confirm.type === 'one') {
+        await deleteJob(userId, confirm.jobId)
+        toast.success('Generación eliminada')
+        const newTotal = total - 1
+        const newPages = Math.max(1, Math.ceil(newTotal / PER_PAGE))
+        const newPage = page > newPages ? newPages : page
+        setPage(newPage)
+        await fetchJobs(newPage)
+      } else {
+        await deleteAllJobs(userId)
+        toast.success('Historial eliminado')
+        setJobs([])
+        setTotal(0)
+        setPages(1)
+        setPage(1)
+      }
+    } catch {
+      toast.error('Error al eliminar')
+    } finally {
+      setConfirm(null)
+    }
+  }
+
+  async function goToPage(p) {
+    setPage(p)
+    setLoadingData(true)
+    try { await fetchJobs(p) } finally { setLoadingData(false) }
+  }
 
   const doneJobs = jobs.filter(j => j.status === 'done')
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-bold text-white mb-2">
-        Bienvenido, {user?.firstName}
-      </h1>
+      <h1 className="text-2xl font-bold text-white mb-2">Bienvenido, {user?.firstName}</h1>
       <p className="text-gray-400 mb-8">Generá creativos inmobiliarios listos para Meta Ads.</p>
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <StatCard
-          label="Créditos disponibles"
-          value={userData?.credits ?? '—'}
-          accent="text-yellow-400"
-          action={<Link to="/pricing" className="text-xs text-yellow-400 hover:underline flex items-center gap-1">Recargar <ArrowRight size={12} /></Link>}
-        />
-        <StatCard
-          label="Propiedades generadas"
-          value={doneJobs.length}
-          accent="text-green-400"
-        />
-        <StatCard
-          label="Plan actual"
+        <StatCard label="Créditos disponibles" value={userData?.credits ?? '—'} accent="text-yellow-400"
+          action={<Link to="/pricing" className="text-xs text-yellow-400 hover:underline flex items-center gap-1">Recargar <ArrowRight size={12} /></Link>} />
+        <StatCard label="Propiedades generadas" value={total} accent="text-green-400" />
+        <StatCard label="Plan actual"
           value={userData?.plan ? userData.plan.charAt(0).toUpperCase() + userData.plan.slice(1) : '—'}
-          accent="text-blue-400"
-        />
+          accent="text-blue-400" />
       </div>
 
       {/* Quick actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
         <Link to="/generate" className="bg-yellow-400 rounded-2xl p-5 flex items-center gap-4 hover:bg-yellow-300 transition-colors group">
-          <div className="bg-gray-900/20 rounded-xl p-3">
-            <Image size={24} className="text-gray-900" />
-          </div>
+          <div className="bg-gray-900/20 rounded-xl p-3"><Image size={24} className="text-gray-900" /></div>
           <div>
             <p className="font-bold text-gray-900">Generar creativos</p>
             <p className="text-sm text-gray-800">Pegá el link de una propiedad</p>
           </div>
           <ArrowRight size={20} className="ml-auto text-gray-900 group-hover:translate-x-1 transition-transform" />
         </Link>
-
         <Link to="/brand" className="bg-gray-900 border border-gray-800 rounded-2xl p-5 flex items-center gap-4 hover:border-gray-600 transition-colors group">
-          <div className="bg-gray-800 rounded-xl p-3">
-            <CreditCard size={24} className="text-yellow-400" />
-          </div>
+          <div className="bg-gray-800 rounded-xl p-3"><CreditCard size={24} className="text-yellow-400" /></div>
           <div>
             <p className="font-bold text-white">Configurar mi marca</p>
             <p className="text-sm text-gray-400">Logo, colores y tipografía</p>
@@ -188,7 +268,7 @@ export default function Dashboard() {
         </Link>
       </div>
 
-      {/* Onboarding — si no tiene marca */}
+      {/* Onboarding */}
       {userData && !userData.brand && (
         <div className="mb-6 bg-yellow-400/10 border border-yellow-400/30 rounded-2xl p-5 flex items-start gap-4">
           <div className="w-8 h-8 rounded-full bg-yellow-400 flex items-center justify-center text-gray-900 font-bold flex-shrink-0 mt-0.5">!</div>
@@ -226,12 +306,50 @@ export default function Dashboard() {
       ) : jobs.length > 0 ? (
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-white">Historial</h2>
-            <span className="text-xs text-gray-600">{jobs.length} generaciones</span>
+            <h2 className="text-lg font-semibold text-white">
+              Historial <span className="text-gray-600 text-sm font-normal ml-1">{total} generaciones</span>
+            </h2>
+            <button onClick={handleDeleteAll}
+              className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-red-400 transition-colors">
+              <Trash2 size={13} /> Borrar todo
+            </button>
           </div>
-          <div className="space-y-3">
-            {jobs.map(job => <JobCard key={job.id} job={job} />)}
+
+          <div className="space-y-3 mb-6">
+            {jobs.map(job => <JobCard key={job.id} job={job} onDelete={handleDeleteOne} />)}
           </div>
+
+          {/* Paginado */}
+          {pages > 1 && (
+            <div className="flex items-center justify-center gap-2">
+              <button onClick={() => goToPage(page - 1)} disabled={page === 1}
+                className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-700 text-gray-400 hover:border-gray-500 disabled:opacity-30 transition-colors">
+                <ChevronLeft size={15} />
+              </button>
+
+              {Array.from({ length: pages }, (_, i) => i + 1).map(p => {
+                // Mostrar primera, última, actual y adyacentes — el resto como "..."
+                const show = p === 1 || p === pages || Math.abs(p - page) <= 1
+                const showDotsBefore = p === page - 2 && page > 3
+                const showDotsAfter = p === page + 2 && page < pages - 2
+                if (showDotsBefore || showDotsAfter) return <span key={p} className="text-gray-600 text-sm">…</span>
+                if (!show) return null
+                return (
+                  <button key={p} onClick={() => goToPage(p)}
+                    className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors ${
+                      p === page ? 'bg-yellow-400 text-gray-900' : 'border border-gray-700 text-gray-400 hover:border-gray-500'
+                    }`}>
+                    {p}
+                  </button>
+                )
+              })}
+
+              <button onClick={() => goToPage(page + 1)} disabled={page === pages}
+                className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-700 text-gray-400 hover:border-gray-500 disabled:opacity-30 transition-colors">
+                <ChevronRight size={15} />
+              </button>
+            </div>
+          )}
         </div>
       ) : userData ? (
         <div className="text-center py-16 text-gray-600">
@@ -240,6 +358,19 @@ export default function Dashboard() {
           <Link to="/generate" className="mt-3 inline-block text-yellow-400 text-sm hover:underline">Crear el primero →</Link>
         </div>
       ) : null}
+
+      {/* Confirm modal */}
+      {confirm && (
+        <ConfirmModal
+          message={
+            confirm.type === 'all'
+              ? `¿Eliminar todo el historial? Esta acción no se puede deshacer.`
+              : `¿Eliminar esta generación? No se puede deshacer.`
+          }
+          onConfirm={confirmDelete}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
     </div>
   )
 }

@@ -45,10 +45,20 @@ export async function updateBrand(userId, brand) {
   return data
 }
 
-export async function listJobs(userId) {
+export async function listJobs(userId, page = 1, perPage = 10) {
   const api = createApi(userId)
-  const { data } = await api.get('/users/jobs')
+  const { data } = await api.get('/users/jobs', { params: { page, per_page: perPage } })
   return data
+}
+
+export async function deleteJob(userId, jobId) {
+  const api = createApi(userId)
+  await api.delete(`/users/jobs/${jobId}`)
+}
+
+export async function deleteAllJobs(userId) {
+  const api = createApi(userId)
+  await api.delete('/users/jobs')
 }
 
 export async function regenerateSlot(userId, jobId, slotIndex, creativeType, customText, fmtName) {
