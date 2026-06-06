@@ -33,6 +33,14 @@ async function downloadImage(url, filename) {
 }
 
 function ConfirmModal({ message, onConfirm, onCancel }) {
+  const [loading, setLoading] = useState(false)
+
+  async function handleConfirm() {
+    setLoading(true)
+    await onConfirm()
+    setLoading(false)
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
       <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-sm w-full">
@@ -41,13 +49,16 @@ function ConfirmModal({ message, onConfirm, onCancel }) {
           <p className="text-white text-sm">{message}</p>
         </div>
         <div className="flex gap-3">
-          <button onClick={onCancel}
-            className="flex-1 py-2 border border-gray-700 text-gray-400 rounded-xl hover:border-gray-500 transition-colors text-sm">
+          <button onClick={onCancel} disabled={loading}
+            className="flex-1 py-2 border border-gray-700 text-gray-400 rounded-xl hover:border-gray-500 transition-colors text-sm disabled:opacity-40">
             Cancelar
           </button>
-          <button onClick={onConfirm}
-            className="flex-1 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors text-sm font-semibold">
-            Eliminar
+          <button onClick={handleConfirm} disabled={loading}
+            className="flex-1 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-70">
+            {loading
+              ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Eliminando...</>
+              : 'Eliminar'
+            }
           </button>
         </div>
       </div>
@@ -201,11 +212,9 @@ export default function Dashboard() {
   }
 
   async function confirmDelete() {
-    const current = confirm
-    setConfirm(null) // cerrar modal inmediatamente
     try {
-      if (current.type === 'one') {
-        await deleteJob(userId, current.jobId)
+      if (confirm.type === 'one') {
+        await deleteJob(userId, confirm.jobId)
         toast.success('Generación eliminada')
         const newTotal = total - 1
         const newPages = Math.max(1, Math.ceil(newTotal / PER_PAGE))
@@ -222,6 +231,8 @@ export default function Dashboard() {
       }
     } catch {
       toast.error('Error al eliminar')
+    } finally {
+      setConfirm(null)
     }
   }
 
