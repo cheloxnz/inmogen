@@ -10,3 +10,5 @@ services:
       - "8003:8003"
     env_file:
       - .env
+    volumes:
+      - /opt/inmogen/static:/opt/inmogen/backend/static
