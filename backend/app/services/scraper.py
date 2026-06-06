@@ -58,17 +58,38 @@ def _country_code_for_url(url: str) -> str:
 
 async def _fetch_with_scraperapi(url: str) -> str:
     country = _country_code_for_url(url)
-    api_url = (
-        f"https://api.scraperapi.com"
-        f"?api_key={settings.SCRAPERAPI_KEY}"
-        f"&url={quote_plus(url)}"
-        f"&country_code={country}"
-        f"&render=true"
-    )
+    base = f"https://api.scraperapi.com?api_key={settings.SCRAPERAPI_KEY}&url={quote_plus(url)}&country_code={country}"
+
     async with httpx.AsyncClient(timeout=90) as client:
-        r = await client.get(api_url)
-        r.raise_for_status()
-    return r.text
+        # 1. Intentar con render=true (necesario para Next.js)
+        try:
+            r = await client.get(base + "&render=true")
+            if r.status_code == 200:
+                return r.text
+        except Exception:
+            pass
+
+        # 2. Fallback sin render (más rápido, funciona en portales SSR)
+        try:
+            r = await client.get(base)
+            if r.status_code == 200:
+                return r.text
+        except Exception:
+            pass
+
+        # 3. Fallback directo sin ScraperAPI
+        try:
+            r = await client.get(url, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept-Language": "es-AR,es;q=0.9,en;q=0.8",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            }, follow_redirects=True, timeout=30)
+            if r.status_code == 200:
+                return r.text
+        except Exception:
+            pass
+
+    raise Exception(f"No se pudo obtener el contenido de {url}")
 
 
 async def scrape_property(url: str) -> PropertyData:
