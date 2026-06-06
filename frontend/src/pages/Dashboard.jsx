@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useUser } from '@clerk/clerk-react'
-import { Link } from 'react-router-dom'
-import { Image, CreditCard, ArrowRight, CheckCircle, Clock, XCircle, Download, ChevronDown, ChevronUp, Trash2, ChevronLeft, ChevronRight, AlertTriangle, Gift, Copy } from 'lucide-react'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
+import { Image, CreditCard, ArrowRight, CheckCircle, Clock, XCircle, Download, ChevronDown, ChevronUp, Trash2, ChevronLeft, ChevronRight, AlertTriangle, Gift, Copy, Zap, PartyPopper } from 'lucide-react'
 import { getMe, listJobs, deleteJob, deleteAllJobs, getReferralInfo } from '../lib/api'
 import toast from 'react-hot-toast'
 
@@ -182,6 +182,19 @@ export default function Dashboard() {
   const [loadingData, setLoadingData] = useState(true)
   const [confirm, setConfirm] = useState(null)
   const [referral, setReferral] = useState(null)
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+
+  // Banner de éxito post-pago
+  const paySuccess = searchParams.get('success')
+  const creditsAdded = searchParams.get('credits')
+
+  useEffect(() => {
+    if (paySuccess || creditsAdded) {
+      // Limpiar params de URL sin recargar
+      navigate('/dashboard', { replace: true })
+    }
+  }, [])
 
   async function fetchJobs(p = page) {
     if (!userId) return
@@ -253,6 +266,39 @@ export default function Dashboard() {
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
+
+      {/* Banner éxito suscripción */}
+      {paySuccess && (
+        <div className="mb-6 bg-green-500/10 border border-green-500/30 rounded-2xl p-5 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
+            <CheckCircle size={20} className="text-green-400" />
+          </div>
+          <div>
+            <p className="text-white font-semibold">¡Suscripción activada!</p>
+            <p className="text-gray-400 text-sm">Tus créditos ya están disponibles. ¡A generar!</p>
+          </div>
+          <Link to="/generate" className="ml-auto flex items-center gap-2 px-4 py-2 bg-green-500 text-white font-semibold rounded-xl text-sm hover:bg-green-400 transition-colors flex-shrink-0">
+            Generar ahora <ArrowRight size={14} />
+          </Link>
+        </div>
+      )}
+
+      {/* Banner éxito pack de créditos */}
+      {creditsAdded && (
+        <div className="mb-6 bg-yellow-400/10 border border-yellow-400/30 rounded-2xl p-5 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-full bg-yellow-400/20 flex items-center justify-center flex-shrink-0">
+            <Zap size={20} className="text-yellow-400" />
+          </div>
+          <div>
+            <p className="text-white font-semibold">¡Créditos agregados!</p>
+            <p className="text-gray-400 text-sm">Tu saldo fue actualizado. Ya podés seguir generando creativos.</p>
+          </div>
+          <Link to="/generate" className="ml-auto flex items-center gap-2 px-4 py-2 bg-yellow-400 text-gray-900 font-semibold rounded-xl text-sm hover:bg-yellow-300 transition-colors flex-shrink-0">
+            Generar ahora <ArrowRight size={14} />
+          </Link>
+        </div>
+      )}
+
       <h1 className="text-2xl font-bold text-white mb-2">Bienvenido, {user?.firstName}</h1>
       <p className="text-gray-400 mb-8">Generá creativos inmobiliarios listos para Meta Ads.</p>
 

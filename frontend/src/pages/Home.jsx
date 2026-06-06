@@ -217,6 +217,11 @@ export default function Home() {
           <span className="font-semibold text-gray-400">InmoGen</span>
         </div>
         <p>© 2026 InmoGen · <a href="mailto:hola@inmogen-ia.com" className="hover:text-gray-400 transition-colors">hola@inmogen-ia.com</a></p>
+        <div className="flex items-center justify-center gap-4 mt-2">
+          <a href="/terms" className="hover:text-gray-400 transition-colors">Términos y condiciones</a>
+          <span>·</span>
+          <a href="/privacy" className="hover:text-gray-400 transition-colors">Política de privacidad</a>
+        </div>
       </footer>
 
       {/* Pricing modal */}

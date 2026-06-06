@@ -27,11 +27,16 @@ app.add_middleware(
         "https://inmogen-ia.com",
         "https://www.inmogen-ia.com",
         "http://localhost:5173",
+        "http://localhost:3000",
     ],
+    allow_origin_regex=r"https://(www\.)?inmogen-ia\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# NOTE: CORS headers are also added by Nginx in production.
+# If running behind Nginx, disable the middleware above to avoid duplicate headers.
+# In production (VPS), Nginx handles CORS — keep this for local dev only.
 
 os.makedirs(STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
