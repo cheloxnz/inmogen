@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { MapPin, Maximize2, BedDouble, Bath, Car, Phone, Globe, Instagram, ChevronLeft, ChevronRight, MessageCircle, Send, CheckCircle, Loader2, Zap } from 'lucide-react'
+import { MapPin, Maximize2, BedDouble, Bath, Car, Phone, Globe, AtSign, ChevronLeft, ChevronRight, MessageCircle, Send, CheckCircle, Loader2, Zap } from 'lucide-react'
 import { getPublicJob, submitLead } from '../lib/api'
 
 function formatPrice(price, currency) {
@@ -325,7 +325,7 @@ export default function PropertyLanding() {
             {instagramUrl && (
               <a href={instagramUrl} target="_blank" rel="noopener noreferrer"
                 className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600">
-                <Instagram size={13} /> {brand.instagram}
+                <AtSign size={13} /> {brand.instagram}
               </a>
             )}
           </div>
