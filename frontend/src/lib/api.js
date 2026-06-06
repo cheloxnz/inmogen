@@ -15,15 +15,14 @@ export async function scrapePreview(userId, propertyUrl) {
   return data
 }
 
-export async function startGeneration(userId, propertyUrl, brand, creativeTypes = ['destacado'], fmtName = 'feed_1x1', selectedPhotos = null, customTexts = null) {
+export async function startGeneration(userId, propertyUrl, brand, creativeSlots = [{ type: 'destacado', custom_text: '' }], fmtName = 'feed_1x1', selectedPhotos = null) {
   const api = createApi(userId)
   const { data } = await api.post('/generate/', {
     property_url: propertyUrl,
     brand,
-    creative_types: creativeTypes,
+    creative_slots: creativeSlots,
     fmt_name: fmtName,
     selected_photos: selectedPhotos,
-    custom_texts: customTexts,
   })
   return data
 }

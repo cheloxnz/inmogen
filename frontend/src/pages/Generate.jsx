@@ -28,12 +28,14 @@ const STATUS_LABELS = {
 const CREATIVE_TYPES = [
   { id: 'destacado',    label: 'Destacado',     emoji: '🏠', desc: 'Foto + precio + datos' },
   { id: 'infografia',   label: 'Infografía',    emoji: '📊', desc: 'Cards con m², amb., baños' },
-  { id: 'hook_attack',  label: 'Hook Attack',   emoji: '⚡', desc: 'Titular que para el scroll' },
-  { id: 'storytelling', label: 'Storytelling',  emoji: '✨', desc: 'Narrativa aspiracional' },
-  { id: 'social_proof', label: 'Social Proof',  emoji: '⭐', desc: 'Confianza de la agencia' },
+  { id: 'hook_attack',  label: 'Hook Attack',   emoji: '⚡', desc: 'Titular que para el scroll', textLabel: 'Titular', textPlaceholder: '¿Todavía pagando alquiler?' },
+  { id: 'storytelling', label: 'Storytelling',  emoji: '✨', desc: 'Narrativa aspiracional',     textLabel: 'Frase narrativa', textPlaceholder: 'El lugar donde todo empieza.' },
+  { id: 'social_proof', label: 'Social Proof',  emoji: '⭐', desc: 'Confianza de la agencia',   textLabel: 'Prueba social', textPlaceholder: 'Más de 200 familias nos eligen' },
   { id: 'faq',          label: 'FAQ',           emoji: '❓', desc: 'Preguntas frecuentes' },
-  { id: 'testimonial',  label: 'Testimonial',   emoji: '💬', desc: 'Cita de cliente' },
+  { id: 'testimonial',  label: 'Testimonial',   emoji: '💬', desc: 'Cita de cliente',           textLabel: 'Cita del cliente', textPlaceholder: '"Encontré exactamente lo que buscaba"' },
 ]
+
+const TYPE_MAP = Object.fromEntries(CREATIVE_TYPES.map(t => [t.id, t]))
 
 const FORMAT_OPTIONS = [
   { id: 'feed_1x1',    label: 'Feed 1:1',    sub: 'Instagram / FB' },
@@ -172,21 +174,59 @@ function StepPhotos({ preview, selectedPhotos, setSelectedPhotos, onContinue, on
   )
 }
 
-// ── Step 3: Format + angles ───────────────────────────────────────────────────
-function StepConfig({ fmt, setFmt, selectedTypes, setSelectedTypes, selectedPhotos, customTexts, setCustomTexts, onGenerate, loading, isRunning, onBack }) {
-  function toggleType(id) {
-    setSelectedTypes(prev =>
-      prev.includes(id)
-        ? prev.length > 1 ? prev.filter(t => t !== id) : prev
-        : [...prev, id]
-    )
-  }
+// ── Step 3: Format + slots ────────────────────────────────────────────────────
+function SlotRow({ slot, index, onChange, onRemove, error }) {
+  const typeDef = TYPE_MAP[slot.type]
+  return (
+    <div className={`bg-gray-900 border rounded-xl p-3 space-y-2 ${error ? 'border-red-500' : 'border-gray-800'}`}>
+      <div className="flex items-center gap-2">
+        <span className="text-base">{typeDef?.emoji}</span>
+        <select
+          value={slot.type}
+          onChange={e => onChange(index, 'type', e.target.value)}
+          className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-yellow-400"
+        >
+          {CREATIVE_TYPES.map(t => (
+            <option key={t.id} value={t.id}>{t.emoji} {t.label}</option>
+          ))}
+        </select>
+        <button type="button" onClick={() => onRemove(index)}
+          className="w-7 h-7 flex items-center justify-center text-gray-600 hover:text-red-400 transition-colors rounded-lg hover:bg-gray-800 flex-shrink-0">
+          ×
+        </button>
+      </div>
+      {typeDef?.textLabel && (
+        <div>
+          <input
+            type="text"
+            value={slot.text}
+            onChange={e => onChange(index, 'text', e.target.value)}
+            placeholder={typeDef.textPlaceholder}
+            className={`w-full bg-gray-800 border rounded-lg px-3 py-1.5 text-white placeholder-gray-600 text-sm focus:outline-none transition-colors ${
+              error ? 'border-red-500 focus:border-red-400' : 'border-gray-700 focus:border-yellow-400'
+            }`}
+          />
+          {error && <p className="text-red-400 text-xs mt-1">{error}</p>}
+        </div>
+      )}
+    </div>
+  )
+}
 
-  const total = selectedTypes.length
+function StepConfig({ fmt, setFmt, slots, setSlots, selectedPhotos, onGenerate, loading, isRunning, onBack, slotErrors }) {
+  function addSlot() {
+    setSlots(prev => [...prev, { type: 'destacado', text: '' }])
+  }
+  function removeSlot(i) {
+    setSlots(prev => prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev)
+  }
+  function changeSlot(i, field, val) {
+    setSlots(prev => prev.map((s, idx) => idx === i ? { ...s, [field]: val } : s))
+  }
 
   return (
     <div className="space-y-6">
-      {/* Selected photos summary */}
+      {/* Fotos seleccionadas */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs text-gray-500">{selectedPhotos.length} fotos seleccionadas:</span>
         <div className="flex gap-1">
@@ -218,76 +258,33 @@ function StepConfig({ fmt, setFmt, selectedTypes, setSelectedTypes, selectedPhot
         </div>
       </div>
 
-      {/* Ángulos */}
+      {/* Slots */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm font-medium text-gray-300">
-            Ángulos creativos <span className="text-yellow-400 ml-1">{selectedTypes.length} sel.</span>
+            Ángulos creativos <span className="text-yellow-400 ml-1">{slots.length} imagen{slots.length !== 1 ? 'es' : ''}</span>
           </p>
-          <div className="flex gap-3">
-            <button type="button" onClick={() => setSelectedTypes(CREATIVE_TYPES.map(t => t.id))}
-              className="text-xs text-gray-500 hover:text-yellow-400 transition-colors">Todos</button>
-            <button type="button" onClick={() => setSelectedTypes(['destacado'])}
-              className="text-xs text-gray-500 hover:text-yellow-400 transition-colors">Solo dest.</button>
-          </div>
+          <button type="button" onClick={addSlot}
+            className="text-xs text-yellow-400 hover:text-yellow-300 transition-colors font-medium">
+            + Agregar ángulo
+          </button>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {CREATIVE_TYPES.map(t => {
-            const active = selectedTypes.includes(t.id)
-            return (
-              <button key={t.id} type="button" onClick={() => toggleType(t.id)}
-                className={`relative text-left p-3 rounded-xl border transition-all ${
-                  active ? 'border-yellow-400 bg-yellow-400/10' : 'border-gray-700 bg-gray-900 hover:border-gray-500'
-                }`}>
-                {active && (
-                  <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-yellow-400 flex items-center justify-center">
-                    <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
-                      <path d="M1 3.5L3.5 6L8 1" stroke="#111" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
-                )}
-                <div className="text-xl mb-1">{t.emoji}</div>
-                <div className={`text-xs font-semibold leading-tight ${active ? 'text-yellow-400' : 'text-white'}`}>{t.label}</div>
-                <div className="text-xs text-gray-500 mt-0.5 leading-tight">{t.desc}</div>
-              </button>
-            )
-          })}
+        <div className="space-y-2">
+          {slots.map((slot, i) => (
+            <SlotRow
+              key={i}
+              slot={slot}
+              index={i}
+              onChange={changeSlot}
+              onRemove={removeSlot}
+              error={slotErrors?.[i]}
+            />
+          ))}
         </div>
         <p className="text-xs text-gray-600 mt-2">
-          {FORMAT_OPTIONS.find(f => f.id === fmt)?.label} · {total} imagen{total !== 1 ? 'es' : ''} a generar
+          {FORMAT_OPTIONS.find(f => f.id === fmt)?.label} · {slots.length} imagen{slots.length !== 1 ? 'es' : ''} a generar
         </p>
       </div>
-
-      {/* Textos personalizados — solo se muestran si el tipo está seleccionado */}
-      {(selectedTypes.includes('hook_attack') || selectedTypes.includes('storytelling')) && (
-        <div className="space-y-3">
-          <p className="text-sm font-medium text-gray-300">Textos personalizados <span className="text-gray-500 font-normal">(opcional)</span></p>
-          {selectedTypes.includes('hook_attack') && (
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">⚡ Hook Attack — titular</label>
-              <input
-                type="text"
-                value={customTexts.hook}
-                onChange={e => setCustomTexts(p => ({ ...p, hook: e.target.value }))}
-                placeholder="Ej: ¿Listo para tu próximo hogar?"
-                className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-white placeholder-gray-600 text-sm focus:outline-none focus:border-yellow-400 transition-colors"
-              />
-            </div>
-          )}
-          {selectedTypes.includes('storytelling') && (
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">✨ Storytelling — frase narrativa</label>
-              <input
-                type="text"
-                value={customTexts.narrative}
-                onChange={e => setCustomTexts(p => ({ ...p, narrative: e.target.value }))}
-                placeholder="Ej: El lugar donde tu historia comienza."
-                className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-white placeholder-gray-600 text-sm focus:outline-none focus:border-yellow-400 transition-colors"
-              />
-            </div>
-          )}
-        </div>
-      )}
 
       <div className="flex gap-3">
         <button type="button" onClick={onBack}
@@ -301,7 +298,7 @@ function StepConfig({ fmt, setFmt, selectedTypes, setSelectedTypes, selectedPhot
           className="flex-1 py-3.5 bg-yellow-400 text-gray-900 font-semibold rounded-xl hover:bg-yellow-300 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
         >
           {(loading || isRunning) && <Loader2 size={16} className="animate-spin" />}
-          {isRunning ? 'Generando...' : `Generar ${total} imagen${total !== 1 ? 'es' : ''}`}
+          {isRunning ? 'Generando...' : `Generar ${slots.length} imagen${slots.length !== 1 ? 'es' : ''}`}
         </button>
       </div>
     </div>
@@ -319,7 +316,8 @@ export default function Generate() {
   const [selectedPhotos, setSelectedPhotos] = useState([])
   const [fmt, setFmt] = useState('feed_1x1')
   const [selectedTypes, setSelectedTypes] = useState(['destacado'])
-  const [customTexts, setCustomTexts] = useState({ hook: '', narrative: '' })
+  const [slots, setSlots] = useState([{ type: 'destacado', text: '' }])
+  const [slotErrors, setSlotErrors] = useState({})
   const [job, setJob] = useState(null)
   const [loading, setLoading] = useState(false)
   const [credits, setCredits] = useState(null)
@@ -354,6 +352,20 @@ export default function Generate() {
   }
 
   async function handleGenerate() {
+    // Validar slots con texto requerido
+    const errors = {}
+    slots.forEach((slot, i) => {
+      const typeDef = TYPE_MAP[slot.type]
+      if (typeDef?.textLabel && !slot.text.trim()) {
+        errors[i] = `El texto de ${typeDef.label} es requerido`
+      }
+    })
+    if (Object.keys(errors).length > 0) {
+      setSlotErrors(errors)
+      return toast.error('Completá los textos requeridos o eliminá esos ángulos')
+    }
+    setSlotErrors({})
+
     if (credits !== null && credits < 1) return toast.error('Sin créditos disponibles')
     setLoading(true)
     try {
@@ -362,8 +374,8 @@ export default function Generate() {
         toast.error('Primero configurá tu marca en "Mi Marca"')
         return
       }
-      const ct = { hook: customTexts.hook.trim(), narrative: customTexts.narrative.trim() }
-      const newJob = await startGeneration(userId, url.trim(), userData.brand, selectedTypes, fmt, selectedPhotos, ct)
+      const creativeSlots = slots.map(s => ({ type: s.type, custom_text: s.text.trim() }))
+      const newJob = await startGeneration(userId, url.trim(), userData.brand, creativeSlots, fmt, selectedPhotos)
       setJob(newJob)
       setCredits(c => c - 1)
       setStep(3)
@@ -375,7 +387,7 @@ export default function Generate() {
   }
 
   const isRunning = job && !['done', 'error'].includes(job.status)
-  const total = selectedTypes.length
+  const total = slots.length
 
   // Step indicators
   const steps = ['URL', 'Fotos', 'Generar']
@@ -436,9 +448,9 @@ export default function Generate() {
         <>
           <StepConfig
             fmt={fmt} setFmt={setFmt}
-            selectedTypes={selectedTypes} setSelectedTypes={setSelectedTypes}
+            slots={slots} setSlots={setSlots}
             selectedPhotos={selectedPhotos}
-            customTexts={customTexts} setCustomTexts={setCustomTexts}
+            slotErrors={slotErrors}
             onGenerate={handleGenerate}
             loading={loading}
             isRunning={isRunning}
@@ -467,7 +479,7 @@ export default function Generate() {
                 <>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
                     {job.creatives.map((imgUrl, i) => {
-                      const typeName = CREATIVE_TYPES.find(t => job.creatives_fmt?.[i]?.startsWith(t.id))
+                      const typeName = CREATIVE_TYPES.find(t => job.creatives_fmt?.[i]?.includes(t.id))
                       const entry = job.creatives_fmt?.[i] || `imagen_${i + 1}`
                       return (
                         <div key={i} className="relative group rounded-xl overflow-hidden border border-gray-700 aspect-square">

@@ -28,13 +28,17 @@ VALID_TYPES = {"destacado", "infografia", "hook_attack", "storytelling",
                "social_proof", "faq", "testimonial"}
 
 
+class CreativeSlot(BaseModel):
+    type: str
+    custom_text: str = ""
+
+
 class GenerateRequest(BaseModel):
     property_url: str
     brand: BrandConfig
-    creative_types: list[str] = ["destacado"]
+    creative_slots: list[CreativeSlot] = [CreativeSlot(type="destacado")]
     fmt_name: str = "feed_1x1"
     selected_photos: list[str] | None = None
-    custom_texts: dict | None = None  # {"hook": "...", "narrative": "..."}
 
 
 @router.get("/preview")
@@ -148,12 +152,13 @@ async def _process_job(job_id: str, req: GenerateRequest, x_user_id: str):
         await db.jobs.update_one({"_id": oid}, {"$set": {**data, "updated_at": datetime.utcnow()}})
 
     try:
-        selected_types = [t for t in req.creative_types if t in VALID_TYPES] or ["destacado"]
+        slots = [s for s in req.creative_slots if s.type in VALID_TYPES]
+        if not slots:
+            slots = [CreativeSlot(type="destacado")]
         fmt = req.fmt_name if req.fmt_name in VALID_FORMATS else "feed_1x1"
 
         await update({"status": "scraping"})
         prop = await scrape_property(req.property_url)
-        # Si el usuario eligió fotos específicas, reemplazar las del scraper
         if req.selected_photos:
             prop.photos = req.selected_photos
         await update({"status": "generating", "property_data": prop.model_dump()})
@@ -161,7 +166,6 @@ async def _process_job(job_id: str, req: GenerateRequest, x_user_id: str):
         job_dir = os.path.join(STATIC_DIR, "jobs", job_id)
         os.makedirs(job_dir, exist_ok=True)
 
-        # Cargar logo como PIL Image para los overlays
         logo_img = None
         if req.brand.logo_url:
             logo_bytes = await _fetch_logo_bytes(req.brand.logo_url)
@@ -171,20 +175,25 @@ async def _process_job(job_id: str, req: GenerateRequest, x_user_id: str):
                 except Exception:
                     pass
 
-        if req.brand.gemini_api_key:
-            # Gemini genera fondos → Pillow superpone texto
-            backgrounds = await generate_backgrounds(prop, req.brand, selected_types, fmt)
-            creatives_dict = {}
-            for ct, bg_bytes in backgrounds.items():
-                creatives_dict[ct] = apply_overlay(bg_bytes, logo_img, req.brand, prop, ct, fmt, custom_texts=req.custom_texts)
-        else:
-            # Solo Pillow con fotos de la propiedad
-            creatives_dict = await pillow_creatives(prop, req.brand, selected_types, fmt, custom_texts=req.custom_texts)
-
         urls = []
         fmt_entries = []
-        for ct, img_bytes in creatives_dict.items():
-            entry = f"{ct}_{fmt}"
+
+        for i, slot in enumerate(slots):
+            ct = slot.type
+            entry = f"{ct}_{i}_{fmt}"
+
+            # Obtener fondo
+            if req.brand.gemini_api_key:
+                bgs = await generate_backgrounds(prop, req.brand, [ct], fmt)
+                bg_bytes = bgs.get(ct)
+            else:
+                bg_bytes = await pillow_creatives(prop, req.brand, [ct], fmt, slot_index=i)
+                bg_bytes = bg_bytes.get(ct)
+
+            if not bg_bytes:
+                continue
+
+            img_bytes = apply_overlay(bg_bytes, logo_img, req.brand, prop, ct, fmt, custom_text=slot.custom_text)
             img_path = os.path.join(job_dir, f"{entry}.jpg")
             with open(img_path, "wb") as f:
                 f.write(img_bytes)

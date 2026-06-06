@@ -27,20 +27,19 @@ async def generate_creatives(
     brand: BrandConfig,
     creative_types: list[str],
     fmt_name: str,
-    custom_texts: dict | None = None,
+    slot_index: int = 0,
 ) -> dict[str, bytes]:
     """
-    Genera un creativo por cada creative_type usando fotos reales + Pillow overlay.
-    Retorna {creative_type: image_bytes}
+    Genera fondos Pillow para los tipos dados. Retorna {creative_type: bg_bytes}.
+    El overlay se aplica fuera con apply_overlay().
     """
     photo_urls = (prop.photos or [])[:6]
     logo_url = brand.logo_url or ""
-    all_urls = photo_urls + ([logo_url] if logo_url else [])
+    all_urls = photo_urls + ([logo_url] if logo_url and not logo_url.startswith("data:") else [])
 
     all_imgs = await asyncio.gather(*[fetch_image(u) for u in all_urls], return_exceptions=True)
 
     photos = [r for r in all_imgs[:len(photo_urls)] if isinstance(r, Image.Image)]
-    logo = all_imgs[len(photo_urls)] if logo_url and isinstance(all_imgs[-1], Image.Image) else None
 
     def get_photo(idx: int) -> Image.Image | None:
         if not photos:
@@ -50,20 +49,19 @@ async def generate_creatives(
     results = {}
     for i, ct in enumerate(creative_types):
         w, h = FORMATS.get(fmt_name, (1080, 1080))
-        bg = get_photo(i)
+        bg = get_photo(slot_index + i)
         if bg:
             bg_resized = crop_center(bg.convert("RGBA"), w, h)
-            bg_bytes = BytesIO()
-            bg_resized.convert("RGB").save(bg_bytes, format="JPEG", quality=92)
-            bg_bytes = bg_bytes.getvalue()
+            buf = BytesIO()
+            bg_resized.convert("RGB").save(buf, format="JPEG", quality=92)
+            results[ct] = buf.getvalue()
         else:
-            # fondo sólido con color primario si no hay foto
-            from PIL import ImageDraw
-            bg_img = Image.new("RGB", (w, h), tuple(int(brand.primary_color.lstrip("#")[i:i+2], 16) for i in (0, 2, 4)))
+            from PIL import ImageDraw as _ID
+            c = brand.primary_color.lstrip("#")
+            color = tuple(int(c[j:j+2], 16) for j in (0, 2, 4))
+            bg_img = Image.new("RGB", (w, h), color)
             buf = BytesIO()
             bg_img.save(buf, format="JPEG")
-            bg_bytes = buf.getvalue()
-
-        results[ct] = apply_overlay(bg_bytes, logo, brand, prop, ct, fmt_name, custom_texts=custom_texts)
+            results[ct] = buf.getvalue()
 
     return results

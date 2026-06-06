@@ -245,7 +245,7 @@ def overlay_destacado(canvas, logo, brand, prop, w, h):
     return canvas.convert("RGB")
 
 
-def overlay_hook_attack(canvas, logo, brand, prop, w, h, custom_texts: dict | None = None):
+def overlay_hook_attack(canvas, logo, brand, prop, w, h, custom_text: str = ""):
     b = s(w, h)
     secondary = hex_to_rgb(brand.secondary_color)
     white = (255, 255, 255, 255)
@@ -255,11 +255,10 @@ def overlay_hook_attack(canvas, logo, brand, prop, w, h, custom_texts: dict | No
     draw = ImageDraw.Draw(canvas)
     draw_logo_agency(canvas, logo, brand, w, h, b, side="right")
 
-    custom_hook = (custom_texts or {}).get("hook", "").strip()
-    if custom_hook:
-        lines = wrap_text(custom_hook, load_font(int(b * 0.082), bold=True), w - PAD * 2, draw, max_lines=3)
+    if custom_text.strip():
+        lines = wrap_text(custom_text.strip(), load_font(int(b * 0.082), bold=True), w - PAD * 2, draw, max_lines=3)
         if not lines:
-            lines = [custom_hook[:30]]
+            lines = [custom_text.strip()[:30]]
     else:
         hooks = [
             ["No vas a encontrar", "esto de nuevo"],
@@ -299,7 +298,7 @@ def overlay_hook_attack(canvas, logo, brand, prop, w, h, custom_texts: dict | No
     return canvas.convert("RGB")
 
 
-def overlay_storytelling(canvas, logo, brand, prop, w, h, custom_texts: dict | None = None):
+def overlay_storytelling(canvas, logo, brand, prop, w, h, custom_text: str = ""):
     b = s(w, h)
     secondary = hex_to_rgb(brand.secondary_color)
     white = (255, 255, 255, 255)
@@ -309,11 +308,10 @@ def overlay_storytelling(canvas, logo, brand, prop, w, h, custom_texts: dict | N
     draw = ImageDraw.Draw(canvas)
     draw_logo_agency(canvas, logo, brand, w, h, b, side="left")
 
-    custom_narr = (custom_texts or {}).get("narrative", "").strip()
-    if custom_narr:
-        lines = wrap_text(custom_narr, load_font(int(b * 0.066), bold=True), w - PAD * 2, draw, max_lines=3)
+    if custom_text.strip():
+        lines = wrap_text(custom_text.strip(), load_font(int(b * 0.066), bold=True), w - PAD * 2, draw, max_lines=3)
         if not lines:
-            lines = [custom_narr[:30]]
+            lines = [custom_text.strip()[:30]]
     else:
         narratives = [
             ["Imaginá tu mañana", "acá adentro."],
@@ -360,7 +358,7 @@ def overlay_storytelling(canvas, logo, brand, prop, w, h, custom_texts: dict | N
     return canvas.convert("RGB")
 
 
-def overlay_social_proof(canvas, logo, brand, prop, w, h):
+def overlay_social_proof(canvas, logo, brand, prop, w, h, custom_text: str = ""):
     b = s(w, h)
     secondary = hex_to_rgb(brand.secondary_color)
     white = (255, 255, 255, 255)
@@ -370,7 +368,7 @@ def overlay_social_proof(canvas, logo, brand, prop, w, h):
     draw_logo_agency(canvas, logo, brand, w, h, b, side="left")
 
     max_text_w = w - PAD * 2
-    trust_text = "Más de 500 familias encontraron su hogar con nosotros"
+    trust_text = custom_text.strip() or "Más de 500 familias encontraron su hogar con nosotros"
     font_trust = load_font(int(b * 0.050), bold=True)
     trust_lines = wrap_text(trust_text, font_trust, max_text_w, draw, max_lines=3)
     ty = int(h * 0.26)
@@ -463,7 +461,7 @@ def overlay_faq(canvas, logo, brand, prop, w, h):
     return canvas.convert("RGB")
 
 
-def overlay_testimonial(canvas, logo, brand, prop, w, h):
+def overlay_testimonial(canvas, logo, brand, prop, w, h, custom_text: str = ""):
     b = s(w, h)
     secondary = hex_to_rgb(brand.secondary_color)
     white = (255, 255, 255, 255)
@@ -478,15 +476,11 @@ def overlay_testimonial(canvas, logo, brand, prop, w, h):
     draw.text((PAD + 10, int(h * 0.19)), '"', font=font_qmark,
               fill=(*secondary, 175))
 
-    quote_lines = [
-        "Encontré exactamente",
-        "lo que buscaba.",
-        "Rápido y sin complicaciones.",
-    ]
+    raw_quote = custom_text.strip() or "Encontré exactamente lo que buscaba. Rápido y sin complicaciones."
     font_quote = load_font(int(b * 0.044))
+    quote_lines = wrap_text(raw_quote, font_quote, max_text_w, draw, max_lines=4)
     qy = int(h * 0.30)
     for line in quote_lines:
-        line = fit_text(draw, line, font_quote, max_text_w)
         shadow(draw, (PAD + 20, qy), line, font_quote, white)
         qy += int(b * 0.060)
 
@@ -588,7 +582,7 @@ OVERLAY_FN = {
     "infografia":   overlay_infografia,
 }
 
-CUSTOM_TEXT_OVERLAYS = {"hook_attack", "storytelling"}
+TEXT_OVERLAYS = {"hook_attack", "storytelling", "social_proof", "testimonial"}
 
 
 def apply_overlay(
@@ -598,7 +592,7 @@ def apply_overlay(
     prop: PropertyData,
     creative_type: str,
     fmt_name: str,
-    custom_texts: dict | None = None,
+    custom_text: str = "",
 ) -> bytes:
     w, h = FORMATS.get(fmt_name, (1080, 1080))
     bg = Image.open(BytesIO(bg_bytes)).convert("RGBA")
@@ -606,8 +600,8 @@ def apply_overlay(
     bg = ImageEnhance.Brightness(bg.convert("RGB")).enhance(0.85).convert("RGBA")
 
     fn = OVERLAY_FN.get(creative_type, overlay_destacado)
-    if creative_type in CUSTOM_TEXT_OVERLAYS:
-        result = fn(bg, logo, brand, prop, w, h, custom_texts=custom_texts)
+    if creative_type in TEXT_OVERLAYS:
+        result = fn(bg, logo, brand, prop, w, h, custom_text=custom_text)
     else:
         result = fn(bg, logo, brand, prop, w, h)
 
