@@ -27,6 +27,7 @@ async def generate_creatives(
     brand: BrandConfig,
     creative_types: list[str],
     fmt_name: str,
+    custom_texts: dict | None = None,
 ) -> dict[str, bytes]:
     """
     Genera un creativo por cada creative_type usando fotos reales + Pillow overlay.
@@ -63,6 +64,6 @@ async def generate_creatives(
             bg_img.save(buf, format="JPEG")
             bg_bytes = buf.getvalue()
 
-        results[ct] = apply_overlay(bg_bytes, logo, brand, prop, ct, fmt_name)
+        results[ct] = apply_overlay(bg_bytes, logo, brand, prop, ct, fmt_name, custom_texts=custom_texts)
 
     return results

@@ -57,15 +57,31 @@ def crop_center(img: Image.Image, w: int, h: int) -> Image.Image:
 
 
 def fit_text(draw: ImageDraw.Draw, text: str, font, max_w: int) -> str:
-    """Trunca el texto para que no supere max_w píxeles."""
+    """Trunca el texto en límite de palabras para que no supere max_w píxeles."""
     if not text:
         return ""
-    while text:
-        bbox = draw.textbbox((0, 0), text, font=font)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    if (bbox[2] - bbox[0]) <= max_w:
+        return text
+    words = text.split()
+    while words:
+        candidate = " ".join(words)
+        bbox = draw.textbbox((0, 0), candidate, font=font)
         if (bbox[2] - bbox[0]) <= max_w:
-            return text
-        text = text[:-1]
+            return candidate
+        words.pop()
     return ""
+
+
+def shrink_font_to_fit(draw: ImageDraw.Draw, lines: list[str], max_size: int, max_w: int, bold: bool = True, min_size: int = 24) -> ImageFont.FreeTypeFont:
+    """Reduce el tamaño de font hasta que todas las líneas entren en max_w."""
+    size = max_size
+    while size >= min_size:
+        font = load_font(size, bold=bold)
+        if all((draw.textbbox((0, 0), l, font=font)[2] - draw.textbbox((0, 0), l, font=font)[0]) <= max_w for l in lines if l):
+            return font
+        size -= 2
+    return load_font(min_size, bold=bold)
 
 
 def wrap_text(text: str, font, max_w: int, draw: ImageDraw.Draw, max_lines: int = 2) -> list[str]:
@@ -229,7 +245,7 @@ def overlay_destacado(canvas, logo, brand, prop, w, h):
     return canvas.convert("RGB")
 
 
-def overlay_hook_attack(canvas, logo, brand, prop, w, h):
+def overlay_hook_attack(canvas, logo, brand, prop, w, h, custom_texts: dict | None = None):
     b = s(w, h)
     secondary = hex_to_rgb(brand.secondary_color)
     white = (255, 255, 255, 255)
@@ -239,27 +255,33 @@ def overlay_hook_attack(canvas, logo, brand, prop, w, h):
     draw = ImageDraw.Draw(canvas)
     draw_logo_agency(canvas, logo, brand, w, h, b, side="right")
 
-    hooks = [
-        ["No vas a encontrar", "esto de nuevo"],
-        ["Tu próxima inversión", "está acá"],
-        ["¿Todavía pagando", "alquiler?"],
-        ["La oportunidad", "que esperabas"],
-    ]
-    import hashlib
-    idx = int(hashlib.md5((prop.title or "x").encode()).hexdigest(), 16) % len(hooks)
-    lines = hooks[idx]
+    custom_hook = (custom_texts or {}).get("hook", "").strip()
+    if custom_hook:
+        lines = wrap_text(custom_hook, load_font(int(b * 0.082), bold=True), w - PAD * 2, draw, max_lines=3)
+        if not lines:
+            lines = [custom_hook[:30]]
+    else:
+        hooks = [
+            ["No vas a encontrar", "esto de nuevo"],
+            ["Tu próxima inversión", "está acá"],
+            ["¿Todavía pagando", "alquiler?"],
+            ["La oportunidad", "que esperabas"],
+        ]
+        import hashlib
+        idx = int(hashlib.md5((prop.title or "x").encode()).hexdigest(), 16) % len(hooks)
+        lines = hooks[idx]
 
-    font_hook = load_font(int(b * 0.082), bold=True)
     max_text_w = w - PAD * 2
-    total_h = len(lines) * int(b * 0.102)
+    font_hook = shrink_font_to_fit(draw, lines, int(b * 0.082), max_text_w, bold=True)
+    line_h = int(font_hook.size * 1.24)
+    total_h = len(lines) * line_h
     start_y = (h - total_h) // 2 - int(b * 0.04)
 
     for line in lines:
-        line = fit_text(draw, line, font_hook, max_text_w)
         bbox = draw.textbbox((0, 0), line, font=font_hook)
         x = max(PAD, (w - (bbox[2] - bbox[0])) // 2)
         shadow(draw, (x, start_y), line, font_hook, white, offset=4)
-        start_y += int(b * 0.102)
+        start_y += line_h
 
     lw = int(w * 0.45)
     ly = start_y + int(b * 0.012)
@@ -277,7 +299,7 @@ def overlay_hook_attack(canvas, logo, brand, prop, w, h):
     return canvas.convert("RGB")
 
 
-def overlay_storytelling(canvas, logo, brand, prop, w, h):
+def overlay_storytelling(canvas, logo, brand, prop, w, h, custom_texts: dict | None = None):
     b = s(w, h)
     secondary = hex_to_rgb(brand.secondary_color)
     white = (255, 255, 255, 255)
@@ -287,27 +309,33 @@ def overlay_storytelling(canvas, logo, brand, prop, w, h):
     draw = ImageDraw.Draw(canvas)
     draw_logo_agency(canvas, logo, brand, w, h, b, side="left")
 
-    narratives = [
-        ["Imaginá tu mañana", "acá adentro."],
-        ["Así se ve tu nuevo", "estilo de vida."],
-        ["El lugar donde", "todo empieza."],
-        ["Tu hogar ideal", "te está esperando."],
-    ]
-    import hashlib
-    idx = int(hashlib.md5((prop.location or "x").encode()).hexdigest(), 16) % len(narratives)
-    lines = narratives[idx]
+    custom_narr = (custom_texts or {}).get("narrative", "").strip()
+    if custom_narr:
+        lines = wrap_text(custom_narr, load_font(int(b * 0.066), bold=True), w - PAD * 2, draw, max_lines=3)
+        if not lines:
+            lines = [custom_narr[:30]]
+    else:
+        narratives = [
+            ["Imaginá tu mañana", "acá adentro."],
+            ["Así se ve tu nuevo", "estilo de vida."],
+            ["El lugar donde", "todo empieza."],
+            ["Tu hogar ideal", "te está esperando."],
+        ]
+        import hashlib
+        idx = int(hashlib.md5((prop.location or "x").encode()).hexdigest(), 16) % len(narratives)
+        lines = narratives[idx]
 
-    font_narr = load_font(int(b * 0.066), bold=True)
     max_text_w = w - PAD * 2
-    total_h = len(lines) * int(b * 0.082)
+    font_narr = shrink_font_to_fit(draw, lines, int(b * 0.066), max_text_w, bold=True)
+    line_h = int(font_narr.size * 1.24)
+    total_h = len(lines) * line_h
     start_y = int(h * 0.35) - total_h // 2
 
     for line in lines:
-        line = fit_text(draw, line, font_narr, max_text_w)
         bbox = draw.textbbox((0, 0), line, font=font_narr)
         x = (w - (bbox[2] - bbox[0])) // 2
         shadow(draw, (x, start_y), line, font_narr, white, offset=3)
-        start_y += int(b * 0.082)
+        start_y += line_h
 
     lw = int(w * 0.3)
     ly = start_y + int(b * 0.018)
@@ -342,11 +370,11 @@ def overlay_social_proof(canvas, logo, brand, prop, w, h):
     draw_logo_agency(canvas, logo, brand, w, h, b, side="left")
 
     max_text_w = w - PAD * 2
-    trust_lines = ["Más de 500 familias", "encontraron su hogar con nosotros"]
+    trust_text = "Más de 500 familias encontraron su hogar con nosotros"
     font_trust = load_font(int(b * 0.050), bold=True)
+    trust_lines = wrap_text(trust_text, font_trust, max_text_w, draw, max_lines=3)
     ty = int(h * 0.26)
     for line in trust_lines:
-        line = fit_text(draw, line, font_trust, max_text_w)
         bbox = draw.textbbox((0, 0), line, font=font_trust)
         shadow(draw, ((w - (bbox[2] - bbox[0])) // 2, ty), line, font_trust, white)
         ty += int(b * 0.065)
@@ -560,6 +588,8 @@ OVERLAY_FN = {
     "infografia":   overlay_infografia,
 }
 
+CUSTOM_TEXT_OVERLAYS = {"hook_attack", "storytelling"}
+
 
 def apply_overlay(
     bg_bytes: bytes,
@@ -568,6 +598,7 @@ def apply_overlay(
     prop: PropertyData,
     creative_type: str,
     fmt_name: str,
+    custom_texts: dict | None = None,
 ) -> bytes:
     w, h = FORMATS.get(fmt_name, (1080, 1080))
     bg = Image.open(BytesIO(bg_bytes)).convert("RGBA")
@@ -575,7 +606,10 @@ def apply_overlay(
     bg = ImageEnhance.Brightness(bg.convert("RGB")).enhance(0.85).convert("RGBA")
 
     fn = OVERLAY_FN.get(creative_type, overlay_destacado)
-    result = fn(bg, logo, brand, prop, w, h)
+    if creative_type in CUSTOM_TEXT_OVERLAYS:
+        result = fn(bg, logo, brand, prop, w, h, custom_texts=custom_texts)
+    else:
+        result = fn(bg, logo, brand, prop, w, h)
 
     buf = BytesIO()
     result.save(buf, format="JPEG", quality=93, optimize=True)

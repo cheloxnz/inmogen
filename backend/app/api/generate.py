@@ -33,7 +33,8 @@ class GenerateRequest(BaseModel):
     brand: BrandConfig
     creative_types: list[str] = ["destacado"]
     fmt_name: str = "feed_1x1"
-    selected_photos: list[str] | None = None  # URLs elegidas por el usuario
+    selected_photos: list[str] | None = None
+    custom_texts: dict | None = None  # {"hook": "...", "narrative": "..."}
 
 
 @router.get("/preview")
@@ -168,10 +169,10 @@ async def _process_job(job_id: str, req: GenerateRequest, x_user_id: str):
             backgrounds = await generate_backgrounds(prop, req.brand, selected_types, fmt)
             creatives_dict = {}
             for ct, bg_bytes in backgrounds.items():
-                creatives_dict[ct] = apply_overlay(bg_bytes, logo_img, req.brand, prop, ct, fmt)
+                creatives_dict[ct] = apply_overlay(bg_bytes, logo_img, req.brand, prop, ct, fmt, custom_texts=req.custom_texts)
         else:
             # Solo Pillow con fotos de la propiedad
-            creatives_dict = await pillow_creatives(prop, req.brand, selected_types, fmt)
+            creatives_dict = await pillow_creatives(prop, req.brand, selected_types, fmt, custom_texts=req.custom_texts)
 
         urls = []
         fmt_entries = []

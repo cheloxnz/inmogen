@@ -15,7 +15,7 @@ export async function scrapePreview(userId, propertyUrl) {
   return data
 }
 
-export async function startGeneration(userId, propertyUrl, brand, creativeTypes = ['destacado'], fmtName = 'feed_1x1', selectedPhotos = null) {
+export async function startGeneration(userId, propertyUrl, brand, creativeTypes = ['destacado'], fmtName = 'feed_1x1', selectedPhotos = null, customTexts = null) {
   const api = createApi(userId)
   const { data } = await api.post('/generate/', {
     property_url: propertyUrl,
@@ -23,6 +23,7 @@ export async function startGeneration(userId, propertyUrl, brand, creativeTypes 
     creative_types: creativeTypes,
     fmt_name: fmtName,
     selected_photos: selectedPhotos,
+    custom_texts: customTexts,
   })
   return data
 }

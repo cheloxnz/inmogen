@@ -160,7 +160,7 @@ function StepPhotos({ preview, selectedPhotos, setSelectedPhotos, onContinue, on
 }
 
 // ── Step 3: Format + angles ───────────────────────────────────────────────────
-function StepConfig({ fmt, setFmt, selectedTypes, setSelectedTypes, selectedPhotos, onGenerate, loading, isRunning, onBack }) {
+function StepConfig({ fmt, setFmt, selectedTypes, setSelectedTypes, selectedPhotos, customTexts, setCustomTexts, onGenerate, loading, isRunning, onBack }) {
   function toggleType(id) {
     setSelectedTypes(prev =>
       prev.includes(id)
@@ -245,6 +245,37 @@ function StepConfig({ fmt, setFmt, selectedTypes, setSelectedTypes, selectedPhot
         </p>
       </div>
 
+      {/* Textos personalizados — solo se muestran si el tipo está seleccionado */}
+      {(selectedTypes.includes('hook_attack') || selectedTypes.includes('storytelling')) && (
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-gray-300">Textos personalizados <span className="text-gray-500 font-normal">(opcional)</span></p>
+          {selectedTypes.includes('hook_attack') && (
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">⚡ Hook Attack — titular</label>
+              <input
+                type="text"
+                value={customTexts.hook}
+                onChange={e => setCustomTexts(p => ({ ...p, hook: e.target.value }))}
+                placeholder="Ej: ¿Listo para tu próximo hogar?"
+                className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-white placeholder-gray-600 text-sm focus:outline-none focus:border-yellow-400 transition-colors"
+              />
+            </div>
+          )}
+          {selectedTypes.includes('storytelling') && (
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">✨ Storytelling — frase narrativa</label>
+              <input
+                type="text"
+                value={customTexts.narrative}
+                onChange={e => setCustomTexts(p => ({ ...p, narrative: e.target.value }))}
+                placeholder="Ej: El lugar donde tu historia comienza."
+                className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-white placeholder-gray-600 text-sm focus:outline-none focus:border-yellow-400 transition-colors"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex gap-3">
         <button type="button" onClick={onBack}
           className="px-4 py-3 border border-gray-700 text-gray-400 rounded-xl hover:border-gray-500 transition-colors text-sm">
@@ -275,6 +306,7 @@ export default function Generate() {
   const [selectedPhotos, setSelectedPhotos] = useState([])
   const [fmt, setFmt] = useState('feed_1x1')
   const [selectedTypes, setSelectedTypes] = useState(['destacado'])
+  const [customTexts, setCustomTexts] = useState({ hook: '', narrative: '' })
   const [job, setJob] = useState(null)
   const [loading, setLoading] = useState(false)
   const [credits, setCredits] = useState(null)
@@ -317,7 +349,8 @@ export default function Generate() {
         toast.error('Primero configurá tu marca en "Mi Marca"')
         return
       }
-      const newJob = await startGeneration(userId, url.trim(), userData.brand, selectedTypes, fmt, selectedPhotos)
+      const ct = { hook: customTexts.hook.trim(), narrative: customTexts.narrative.trim() }
+      const newJob = await startGeneration(userId, url.trim(), userData.brand, selectedTypes, fmt, selectedPhotos, ct)
       setJob(newJob)
       setCredits(c => c - 1)
       setStep(3)
@@ -392,6 +425,7 @@ export default function Generate() {
             fmt={fmt} setFmt={setFmt}
             selectedTypes={selectedTypes} setSelectedTypes={setSelectedTypes}
             selectedPhotos={selectedPhotos}
+            customTexts={customTexts} setCustomTexts={setCustomTexts}
             onGenerate={handleGenerate}
             loading={loading}
             isRunning={isRunning}
