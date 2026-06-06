@@ -234,7 +234,7 @@ def overlay_hook_attack(canvas, logo, brand, prop, w, h):
     secondary = hex_to_rgb(brand.secondary_color)
     white = (255, 255, 255, 255)
 
-    dark = Image.new("RGBA", (w, h), (0, 0, 0, 150))
+    dark = Image.new("RGBA", (w, h), (0, 0, 0, 110))
     canvas = Image.alpha_composite(canvas, dark)
     draw = ImageDraw.Draw(canvas)
     draw_logo_agency(canvas, logo, brand, w, h, b, side="right")
@@ -398,7 +398,7 @@ def overlay_faq(canvas, logo, brand, prop, w, h):
         ("¿Cuánto cuesta?",      price_str(prop)),
         ("¿Cuántos ambientes?",  str(prop.rooms) if prop.rooms else "Consultar"),
         ("¿Acepta crédito?",     "Consultá con nosotros"),
-        ("¿Dónde queda?",        (prop.location or "Consultar")[:38]),
+        ("¿Dónde queda?",        prop.location or "Consultar"),
     ]
 
     cx1 = int(w * 0.055)
