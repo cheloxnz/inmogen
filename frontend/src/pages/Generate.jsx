@@ -106,7 +106,7 @@ function StagingModal({ photoUrl, userId, onResult, onClose }) {
     try {
       const res = await stagePhoto(userId, photoUrl, room, style)
       toast.success('Staging aplicado')
-      onResult(photoUrl, res.url)
+      onResult(res.url)
     } catch (e) {
       const msg = e?.response?.data?.detail || e.message || 'Error en el staging'
       if (msg.includes('REPLICATE_API_TOKEN')) {
@@ -184,7 +184,7 @@ function SkyModal({ photoUrl, userId, onResult, onClose }) {
     try {
       const res = await replaceSky(userId, photoUrl, style)
       toast.success('Cielo reemplazado')
-      onResult(photoUrl, res.url)
+      onResult(res.url)
     } catch (e) {
       toast.error(e?.response?.data?.detail || 'Error al reemplazar el cielo')
     } finally {
@@ -878,7 +878,7 @@ export default function Generate() {
   // ── Video Modal ──────────────────────────────────────────────────────────
   function VideoModal() {
     const [vFmt, setVFmt] = useState('story_9x16')
-    const [vStyle, setVStyle] = useState('kenburns')
+    const [vStyle, setVStyle] = useState('cinematic')
     const [vDur, setVDur] = useState(4)
     const vFormats = [
       { id: 'story_9x16',  label: 'Story 9:16',  sub: 'Reels / Stories' },
@@ -886,8 +886,8 @@ export default function Generate() {
       { id: 'banner_16x9', label: 'Banner 16:9',  sub: 'Facebook Ads' },
     ]
     const vStyles = [
-      { id: 'kenburns',  label: 'Ken Burns',  desc: 'Zoom + paneo cinematográfico' },
-      { id: 'slideshow', label: 'Slideshow',  desc: 'Fade suave entre fotos' },
+      { id: 'cinematic', label: 'Cinematic',  desc: 'Fade suave entre fotos' },
+      { id: 'slideshow', label: 'Slideshow',  desc: 'Dissolve lento y elegante' },
     ]
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setVideoModal(false)}>
@@ -935,7 +935,7 @@ export default function Generate() {
           >
             <Zap size={14} /> Generar MP4
           </button>
-          <p className="text-[10px] text-gray-600 text-center">Requiere FFmpeg en el servidor · ~1-2 minutos</p>
+          <p className="text-[10px] text-gray-600 text-center">Genera en ~20-30 segundos · max 7 fotos</p>
         </div>
       </div>
     )
