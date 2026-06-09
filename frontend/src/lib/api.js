@@ -122,9 +122,14 @@ export async function replaceSky(userId, photoUrl, style = 'clear') {
   return data // { url, original_url, style }
 }
 
-export async function stagePhoto(userId, photoUrl, roomType = 'living_room', style = 'modern') {
+export async function stagePhoto(userId, photoUrl, roomType = 'living_room', style = 'modern', replicateKey = '') {
   const api = createApi(userId)
-  const { data } = await api.post('/photos/stage', { url: photoUrl, room_type: roomType, style })
+  const { data } = await api.post('/photos/stage', {
+    url: photoUrl,
+    room_type: roomType,
+    style,
+    replicate_api_key: replicateKey,
+  })
   return data // { url, original_url, style, room_type }
 }
 

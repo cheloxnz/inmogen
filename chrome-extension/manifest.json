@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "InmoGen — Creativos con IA",
+  "version": "1.0.0",
+  "description": "Generá creativos de Meta Ads para cualquier propiedad inmobiliaria con un click.",
+  "permissions": ["activeTab", "tabs"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "InmoGen — Generar creativos",
+    "default_icon": {
+      "16":  "icons/icon16.png",
+      "48":  "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.zonaprop.com.ar/*",
+        "*://*.argenprop.com/*",
+        "*://*.properati.com.ar/*",
+        "*://*.mercadolibre.com.ar/*",
+        "*://*.inmuebles24.com/*",
+        "*://*.idealista.com/*",
+        "*://*.fotocasa.es/*",
+        "*://*.habitaclia.com/*",
+        "*://*.portalinmobiliario.com/*",
+        "*://*.infocasas.com.uy/*",
+        "*://*.toctoc.com/*",
+        "*://*.metrocuadrado.com/*",
+        "*://*.fincaraiz.com.co/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

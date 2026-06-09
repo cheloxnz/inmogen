@@ -40,6 +40,7 @@ class StageRequest(BaseModel):
     url: str
     room_type: str = "living_room"
     style: str = "modern"
+    replicate_api_key: str = ""  # Key del usuario (opcional, usa la del servidor si no se provee)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -122,7 +123,7 @@ async def stage_photo(req: StageRequest, x_user_id: str = Header(...)):
     room_type = req.room_type if req.room_type in valid_rooms else "living_room"
 
     try:
-        staged_bytes = await virtual_stage(req.url, room_type=room_type, style=style)
+        staged_bytes = await virtual_stage(req.url, room_type=room_type, style=style, user_replicate_key=req.replicate_api_key)
         new_url = _save_enhanced(staged_bytes, f"staged_{style}_{room_type}")
         return {
             "url": new_url,

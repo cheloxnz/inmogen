@@ -38,6 +38,7 @@ async def virtual_stage(
     img_url: str,
     room_type: str = "living_room",
     style: str = "modern",
+    user_replicate_key: str = "",
 ) -> bytes:
     """
     Aplica home staging virtual usando Replicate (stability-ai/stable-diffusion-img2img).
@@ -52,10 +53,13 @@ async def virtual_stage(
     """
     from app.core.config import settings
 
-    if not settings.REPLICATE_API_TOKEN:
+    # Prioridad: key del usuario → key del servidor
+    api_token = user_replicate_key.strip() or settings.REPLICATE_API_TOKEN
+    if not api_token:
         raise Exception(
-            "REPLICATE_API_TOKEN no configurado. "
-            "Obtené tu token en https://replicate.com/account/api-tokens y agregalo al .env del VPS."
+            "Replicate API key no configurada. "
+            "Agregá tu token en Configuración → Marca → Replicate API Key. "
+            "Obtené uno gratis en https://replicate.com/account/api-tokens"
         )
 
     style_desc = STYLE_PROMPTS.get(style, STYLE_PROMPTS["modern"])
@@ -72,10 +76,10 @@ async def virtual_stage(
     )
 
     import replicate
-    client = replicate.Client(api_token=settings.REPLICATE_API_TOKEN)
+    client = replicate.Client(api_token=api_token)
 
     # Resolver la versión latest del modelo dinámicamente
-    model_with_version = await _resolve_model_version(REPLICATE_MODEL, settings.REPLICATE_API_TOKEN)
+    model_with_version = await _resolve_model_version(REPLICATE_MODEL, api_token)
 
     def _run_sync():
         return client.run(

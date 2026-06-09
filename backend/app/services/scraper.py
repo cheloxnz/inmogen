@@ -99,16 +99,19 @@ async def scrape_property(url: str) -> PropertyData:
     return _parse_property(soup, html, url, portal)
 
 
-def _extract_photos_from_json(html: str) -> list[str]:
-    """Extrae fotos de JSON embedido en el HTML (Next.js, JSON-LD, etc.)."""
-    photos = []
+def _extract_photos_from_json(html: str) -> tuple[list[str], list[str]]:
+    """
+    Extrae fotos y planos de JSON embedido en el HTML.
+    Retorna (photos, floor_plans).
+    """
+    all_urls: list[str] = []
 
     # 1. Buscar __NEXT_DATA__ (Zonaprop, Argenprop usan Next.js)
     m = re.search(r'<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
     if m:
         try:
             data = json.loads(m.group(1))
-            _walk_json_for_photos(data, photos)
+            _walk_json_for_photos(data, all_urls)
         except Exception:
             pass
 
@@ -122,7 +125,7 @@ def _extract_photos_from_json(html: str) -> list[str]:
         if m:
             try:
                 data = json.loads(m.group(1))
-                _walk_json_for_photos(data, photos)
+                _walk_json_for_photos(data, all_urls)
             except Exception:
                 pass
 
@@ -130,16 +133,25 @@ def _extract_photos_from_json(html: str) -> list[str]:
     for script in re.findall(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', html, re.S):
         try:
             data = json.loads(script)
-            _walk_json_for_photos(data, photos)
+            _walk_json_for_photos(data, all_urls)
         except Exception:
             pass
 
     # 4. URLs de imágenes sueltas en el HTML (fallback)
     for url in re.findall(r'https?://[^\s"\'<>]+\.(?:jpg|jpeg|png|webp)(?:\?[^\s"\'<>]*)?', html, re.I):
-        if _is_property_photo(url) and url not in photos:
+        if _is_property_photo(url) and url not in all_urls:
+            all_urls.append(url)
+
+    # Separar planos de fotos
+    photos = []
+    floor_plans = []
+    for url in dict.fromkeys(all_urls):  # deduplicate
+        if _is_floor_plan(url):
+            floor_plans.append(url)
+        else:
             photos.append(url)
 
-    return list(dict.fromkeys(photos))  # deduplicate preserving order
+    return photos, floor_plans
 
 
 def _walk_json_for_photos(obj, photos: list, depth: int = 0):
@@ -162,6 +174,17 @@ def _walk_json_for_photos(obj, photos: list, depth: int = 0):
                 _walk_json_for_photos(v, photos, depth + 1)
             else:
                 _walk_json_for_photos(v, photos, depth + 1)
+
+
+FLOOR_PLAN_KEYWORDS = [
+    "plano", "planta", "floor-plan", "floorplan", "floor_plan",
+    "blueprint", "layout", "mapa-piso", "plant", "grundriss",
+]
+
+def _is_floor_plan(url: str) -> bool:
+    """Detecta si una URL corresponde a un plano de planta."""
+    url_lower = url.lower()
+    return any(k in url_lower for k in FLOOR_PLAN_KEYWORDS)
 
 
 def _is_property_photo(url: str) -> bool:
@@ -293,17 +316,22 @@ def _parse_property(soup: BeautifulSoup, html: str, url: str, portal: str) -> Pr
             location = el.get_text(strip=True)
             break
 
-    # --- Fotos: primero JSON embedido, luego <img> tags ---
-    photos = _extract_photos_from_json(html)
+    # --- Fotos y planos: primero JSON embedido, luego <img> tags ---
+    photos, floor_plans = _extract_photos_from_json(html)
 
     # Fallback: <img> tags
     if len(photos) < 3:
         for img in soup.find_all("img"):
             src = img.get("src") or img.get("data-src") or img.get("data-lazy-src") or ""
-            if src.startswith("http") and _is_property_photo(src) and src not in photos:
+            if not src.startswith("http"):
+                continue
+            if _is_floor_plan(src) and src not in floor_plans:
+                floor_plans.append(src)
+            elif _is_property_photo(src) and src not in photos:
                 photos.append(src)
 
-    photos = photos[:40]  # hasta 40 fotos
+    photos = photos[:40]
+    floor_plans = floor_plans[:10]
 
     # --- Atributos numéricos ---
     body_text = soup.get_text(" ", strip=True)
@@ -340,6 +368,7 @@ def _parse_property(soup: BeautifulSoup, html: str, url: str, portal: str) -> Pr
         currency=currency,
         location=location[:120],
         photos=photos,
+        floor_plans=floor_plans,
         area_m2=area,
         rooms=rooms,
         bathrooms=bathrooms,

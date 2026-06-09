@@ -17,6 +17,7 @@ class PropertyData(BaseModel):
     bathrooms: Optional[int] = None
     parking: Optional[int] = None
     photos: list[str] = []
+    floor_plans: list[str] = []
     portal: str = ""
     scraped_at: datetime = None
 

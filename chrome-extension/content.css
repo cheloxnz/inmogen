@@ -1,0 +1,47 @@
+#inmogen-fab {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 16px;
+  background: #111827;
+  border: 2px solid #facc15;
+  border-radius: 999px;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+#inmogen-fab:hover {
+  background: #facc15;
+  color: #111827;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(250, 204, 21, 0.35);
+}
+
+.inmogen-fab-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.inmogen-fab-text {
+  letter-spacing: 0.01em;
+}
+
+@media (max-width: 600px) {
+  #inmogen-fab .inmogen-fab-text {
+    display: none;
+  }
+  #inmogen-fab {
+    padding: 12px;
+    border-radius: 50%;
+  }
+}

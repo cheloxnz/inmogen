@@ -105,6 +105,7 @@ async def scrape_preview(url: str, x_user_id: str = Header(...)):
             "area_m2": prop.area_m2,
             "rooms": prop.rooms,
             "photos": prop.photos or [],
+            "floor_plans": prop.floor_plans or [],
         }
     except Exception as e:
         raise HTTPException(400, f"Error al procesar la URL: {e}")

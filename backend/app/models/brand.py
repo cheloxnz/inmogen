@@ -13,3 +13,4 @@ class BrandConfig(BaseModel):
     website: str = ""
     instagram: str = ""
     gemini_api_key: str = ""
+    replicate_api_key: str = ""

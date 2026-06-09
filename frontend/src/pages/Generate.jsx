@@ -96,7 +96,7 @@ const SKY_STYLES = [
   { id: 'cloudy',  label: 'Nublado suave',   emoji: '⛅' },
 ]
 
-function StagingModal({ photoUrl, userId, onResult, onClose }) {
+function StagingModal({ photoUrl, userId, replicateKey = '', onResult, onClose }) {
   const [style, setStyle] = useState('modern')
   const [room, setRoom] = useState('living_room')
   const [loading, setLoading] = useState(false)
@@ -104,7 +104,7 @@ function StagingModal({ photoUrl, userId, onResult, onClose }) {
   async function handleStage() {
     setLoading(true)
     try {
-      const res = await stagePhoto(userId, photoUrl, room, style)
+      const res = await stagePhoto(userId, photoUrl, room, style, replicateKey)
       toast.success('Staging aplicado')
       onResult(res.url)
     } catch (e) {
@@ -227,8 +227,9 @@ function SkyModal({ photoUrl, userId, onResult, onClose }) {
 }
 
 // ── Step 2: Photo selector ────────────────────────────────────────────────────
-function StepPhotos({ preview, selectedPhotos, setSelectedPhotos, onContinue, onBack, userId }) {
+function StepPhotos({ preview, selectedPhotos, setSelectedPhotos, onContinue, onBack, userId, brand }) {
   const photos = preview.photos || []
+  const floorPlans = preview.floor_plans || []
   const MAX = 7
 
   // photoOverrides: { originalUrl → processedUrl }
@@ -301,6 +302,7 @@ function StepPhotos({ preview, selectedPhotos, setSelectedPhotos, onContinue, on
         <StagingModal
           photoUrl={resolveUrl(stagingModal)}
           userId={userId}
+          replicateKey={brand?.replicate_api_key || ''}
           onResult={handleProcessResult.bind(null, stagingModal)}
           onClose={() => setStagingModal(null)}
         />
@@ -458,6 +460,34 @@ function StepPhotos({ preview, selectedPhotos, setSelectedPhotos, onContinue, on
           Hover sobre cada foto para mejorarla con IA antes de usarla en los creativos.
         </p>
       </div>
+
+      {/* Planos de planta */}
+      {floorPlans.length > 0 && (
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+          <p className="text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
+            <span>📐</span> Planos de planta detectados
+            <span className="text-xs text-gray-500 font-normal">({floorPlans.length})</span>
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            {floorPlans.map((url, i) => (
+              <a
+                key={i}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group relative w-20 h-20 rounded-lg overflow-hidden border border-gray-700 hover:border-yellow-400 transition-all"
+                title="Ver plano completo"
+              >
+                <img src={url} alt={`Plano ${i+1}`} className="w-full h-full object-cover" loading="lazy" />
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <Download size={14} className="text-white" />
+                </div>
+              </a>
+            ))}
+          </div>
+          <p className="text-xs text-gray-600 mt-2">Click en un plano para verlo a tamaño completo o descargarlo.</p>
+        </div>
+      )}
 
       <div className="flex gap-3">
         <button type="button" onClick={onBack}
@@ -1010,6 +1040,7 @@ export default function Generate() {
           onContinue={() => setStep(3)}
           onBack={() => setStep(1)}
           userId={user?.id}
+          brand={brand}
         />
       )}
 

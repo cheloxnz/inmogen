@@ -42,6 +42,7 @@ const DEFAULT_BRAND = {
   website: '',
   instagram: '',
   gemini_api_key: '',
+  replicate_api_key: '',
 }
 
 export default function Brand() {
@@ -220,6 +221,36 @@ export default function Brand() {
             <p className="text-green-400 text-xs mt-2 flex items-center gap-1">✓ API Key configurada — tus creativos usarán Gemini Imagen 3</p>
           ) : (
             <p className="text-gray-500 text-xs mt-2">Sin API Key se usará el motor básico de generación.</p>
+          )}
+        </div>
+
+        {/* Replicate API Key */}
+        <div className="rounded-2xl border border-gray-700 bg-gray-900/50 p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <Key size={16} className="text-purple-400" />
+            <span className="font-semibold text-white text-sm">API Key de Replicate</span>
+            <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full">Opcional</span>
+          </div>
+          <p className="text-gray-400 text-xs mb-3">
+            Necesaria para el <strong className="text-white">Home Staging Virtual</strong> (amoblar habitaciones con IA).
+            Obtené tu token gratis en{' '}
+            <a href="https://replicate.com/account/api-tokens" target="_blank" rel="noopener noreferrer"
+              className="text-purple-400 hover:underline">replicate.com →</a>
+          </p>
+          <div className="relative">
+            <Key size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+            <input
+              type="password"
+              value={brand.replicate_api_key || ''}
+              onChange={e => set('replicate_api_key', e.target.value)}
+              placeholder="r8_xxxxxxxxxxxxxxxxxxxx"
+              className={inputCls + ' pl-8 font-mono text-sm'}
+            />
+          </div>
+          {brand.replicate_api_key ? (
+            <p className="text-green-400 text-xs mt-2">✓ Replicate Key configurada — podés usar Staging Virtual</p>
+          ) : (
+            <p className="text-gray-600 text-xs mt-2">Sin key, el staging usa la key del servidor (si está configurada).</p>
           )}
         </div>
 
