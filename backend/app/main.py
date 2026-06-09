@@ -21,22 +21,19 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="InmoGen API", version="0.1.0", lifespan=lifespan)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://inmogen-ia.com",
-        "https://www.inmogen-ia.com",
-        "http://localhost:5173",
-        "http://localhost:3000",
-    ],
-    allow_origin_regex=r"https://(www\.)?inmogen-ia\.com",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-# NOTE: CORS headers are also added by Nginx in production.
-# If running behind Nginx, disable the middleware above to avoid duplicate headers.
-# In production (VPS), Nginx handles CORS — keep this for local dev only.
+import os as _os
+# En producción Nginx maneja CORS. Solo activar en desarrollo local.
+if _os.environ.get("ENVIRONMENT", "production") == "development":
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:5173",
+            "http://localhost:3000",
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 os.makedirs(STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
