@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useUser } from '@clerk/clerk-react'
 import { Link } from 'react-router-dom'
-import { Link2, Loader2, CheckCircle, XCircle, Download, Search, ChevronRight, RefreshCw, Share2, Zap } from 'lucide-react'
+import { Link2, Loader2, CheckCircle, XCircle, Download, Search, ChevronRight, RefreshCw, Share2, Zap, Sparkles, Sun, Sofa } from 'lucide-react'
 
 async function downloadImage(url, filename) {
   try {
@@ -16,7 +16,7 @@ async function downloadImage(url, filename) {
   }
 }
 import toast from 'react-hot-toast'
-import { startGeneration, pollJob, getMe, scrapePreview, regenerateSlot } from '../lib/api'
+import { startGeneration, pollJob, getMe, scrapePreview, regenerateSlot, enhancePhoto, replaceSky, stagePhoto } from '../lib/api'
 
 const STATUS_LABELS = {
   pending: 'En cola...',
@@ -73,21 +73,247 @@ function StepUrl({ url, setUrl, onScrape, loading }) {
   )
 }
 
+// ── Staging Modal ─────────────────────────────────────────────────────────────
+const STAGING_STYLES = [
+  { id: 'modern',         label: 'Moderno',       emoji: '🏙️' },
+  { id: 'scandinavian',   label: 'Escandinavo',   emoji: '🌿' },
+  { id: 'classic',        label: 'Clásico',       emoji: '🏛️' },
+  { id: 'industrial',     label: 'Industrial',    emoji: '🔩' },
+  { id: 'mediterranean',  label: 'Mediterráneo',  emoji: '🌊' },
+]
+const ROOM_TYPES = [
+  { id: 'living_room', label: 'Living' },
+  { id: 'bedroom',     label: 'Dormitorio' },
+  { id: 'kitchen',     label: 'Cocina' },
+  { id: 'bathroom',    label: 'Baño' },
+  { id: 'dining',      label: 'Comedor' },
+  { id: 'office',      label: 'Oficina' },
+]
+const SKY_STYLES = [
+  { id: 'clear',   label: 'Azul despejado',  emoji: '☀️' },
+  { id: 'golden',  label: 'Hora dorada',     emoji: '🌅' },
+  { id: 'sunset',  label: 'Atardecer',       emoji: '🌇' },
+  { id: 'cloudy',  label: 'Nublado suave',   emoji: '⛅' },
+]
+
+function StagingModal({ photoUrl, userId, onResult, onClose }) {
+  const [style, setStyle] = useState('modern')
+  const [room, setRoom] = useState('living_room')
+  const [loading, setLoading] = useState(false)
+
+  async function handleStage() {
+    setLoading(true)
+    try {
+      const res = await stagePhoto(userId, photoUrl, room, style)
+      toast.success('Staging aplicado')
+      onResult(photoUrl, res.url)
+    } catch (e) {
+      const msg = e?.response?.data?.detail || e.message || 'Error en el staging'
+      if (msg.includes('REPLICATE_API_TOKEN')) {
+        toast.error('Staging requiere configurar REPLICATE_API_TOKEN en el servidor')
+      } else {
+        toast.error(msg)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl p-5 w-full max-w-sm space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-white font-semibold text-sm flex items-center gap-2">
+            <Sofa size={16} className="text-yellow-400" /> Home Staging Virtual
+          </h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-white text-lg leading-none">×</button>
+        </div>
+
+        <div>
+          <p className="text-xs text-gray-400 mb-2">Estilo de decoración</p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {STAGING_STYLES.map(s => (
+              <button key={s.id} type="button" onClick={() => setStyle(s.id)}
+                className={`py-1.5 px-2 rounded-lg text-xs border transition-all ${
+                  style === s.id
+                    ? 'border-yellow-400 bg-yellow-400/10 text-yellow-400'
+                    : 'border-gray-700 text-gray-400 hover:border-gray-500'
+                }`}>
+                {s.emoji} {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-xs text-gray-400 mb-2">Tipo de habitación</p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {ROOM_TYPES.map(r => (
+              <button key={r.id} type="button" onClick={() => setRoom(r.id)}
+                className={`py-1.5 px-2 rounded-lg text-xs border transition-all ${
+                  room === r.id
+                    ? 'border-yellow-400 bg-yellow-400/10 text-yellow-400'
+                    : 'border-gray-700 text-gray-400 hover:border-gray-500'
+                }`}>
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleStage}
+          disabled={loading}
+          className="w-full py-2.5 bg-yellow-400 text-gray-900 font-semibold rounded-xl hover:bg-yellow-300 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
+        >
+          {loading ? <><Loader2 size={14} className="animate-spin" /> Generando staging (~40s)...</> : <><Sofa size={14} /> Aplicar Staging</>}
+        </button>
+        <p className="text-xs text-gray-600 text-center">Requiere REPLICATE_API_TOKEN en el servidor</p>
+      </div>
+    </div>
+  )
+}
+
+function SkyModal({ photoUrl, userId, onResult, onClose }) {
+  const [style, setStyle] = useState('clear')
+  const [loading, setLoading] = useState(false)
+
+  async function handleSky() {
+    setLoading(true)
+    try {
+      const res = await replaceSky(userId, photoUrl, style)
+      toast.success('Cielo reemplazado')
+      onResult(photoUrl, res.url)
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Error al reemplazar el cielo')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl p-5 w-full max-w-xs space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-white font-semibold text-sm flex items-center gap-2">
+            <Sun size={16} className="text-yellow-400" /> Reemplazar Cielo
+          </h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-white text-lg leading-none">×</button>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {SKY_STYLES.map(s => (
+            <button key={s.id} type="button" onClick={() => setStyle(s.id)}
+              className={`py-2 px-3 rounded-lg text-xs border transition-all ${
+                style === s.id
+                  ? 'border-yellow-400 bg-yellow-400/10 text-yellow-400'
+                  : 'border-gray-700 text-gray-400 hover:border-gray-500'
+              }`}>
+              {s.emoji} {s.label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={handleSky}
+          disabled={loading}
+          className="w-full py-2.5 bg-yellow-400 text-gray-900 font-semibold rounded-xl hover:bg-yellow-300 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
+        >
+          {loading ? <><Loader2 size={14} className="animate-spin" /> Procesando...</> : <><Sun size={14} /> Aplicar</>}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Step 2: Photo selector ────────────────────────────────────────────────────
-function StepPhotos({ preview, selectedPhotos, setSelectedPhotos, onContinue, onBack }) {
+function StepPhotos({ preview, selectedPhotos, setSelectedPhotos, onContinue, onBack, userId }) {
   const photos = preview.photos || []
   const MAX = 7
 
-  function toggle(url) {
+  // photoOverrides: { originalUrl → processedUrl }
+  const [photoOverrides, setPhotoOverrides] = useState({})
+  // processingPhotos: { url → 'enhancing' | true }
+  const [processingPhotos, setProcessingPhotos] = useState({})
+  // Staging modal state
+  const [stagingModal, setStagingModal] = useState(null) // url or null
+  const [skyModal, setSkyModal] = useState(null)         // url or null
+
+  // Resuelve la URL real de una foto (original o procesada)
+  function resolveUrl(orig) { return photoOverrides[orig] || orig }
+
+  function toggle(origUrl) {
+    const resolved = resolveUrl(origUrl)
     setSelectedPhotos(prev =>
-      prev.includes(url)
-        ? prev.filter(u => u !== url)
-        : prev.length < MAX ? [...prev, url] : prev
+      prev.includes(resolved)
+        ? prev.filter(u => u !== resolved)
+        : prev.length < MAX ? [...prev, resolved] : prev
     )
+  }
+
+  function isSelected(origUrl) {
+    return selectedPhotos.includes(resolveUrl(origUrl))
+  }
+
+  function selectionOrder(origUrl) {
+    const idx = selectedPhotos.indexOf(resolveUrl(origUrl))
+    return idx >= 0 ? idx + 1 : null
+  }
+
+  async function handleEnhance(e, origUrl) {
+    e.stopPropagation()
+    if (processingPhotos[origUrl]) return
+    setProcessingPhotos(p => ({ ...p, [origUrl]: 'enhancing' }))
+    try {
+      const res = await enhancePhoto(userId, resolveUrl(origUrl))
+      setPhotoOverrides(o => ({ ...o, [origUrl]: res.url }))
+      // Si la foto estaba seleccionada, actualizar su URL en la lista
+      const oldResolved = photoOverrides[origUrl] || origUrl
+      setSelectedPhotos(prev => prev.map(u => u === oldResolved ? res.url : u))
+      toast.success('Foto mejorada')
+    } catch {
+      toast.error('Error al mejorar la foto')
+    } finally {
+      setProcessingPhotos(p => { const c = { ...p }; delete c[origUrl]; return c })
+    }
+  }
+
+  function handleProcessResult(origUrl, newUrl) {
+    const oldResolved = photoOverrides[origUrl] || origUrl
+    setPhotoOverrides(o => ({ ...o, [origUrl]: newUrl }))
+    setSelectedPhotos(prev => prev.map(u => u === oldResolved ? newUrl : u))
+    setStagingModal(null)
+    setSkyModal(null)
+  }
+
+  const hasEnhancement = (url) => !!photoOverrides[url]
+
+  // Primeras N fotos para selección rápida (usando URLs resueltas)
+  function selectFirst() {
+    const resolved = photos.slice(0, MAX).map(resolveUrl)
+    setSelectedPhotos(resolved)
   }
 
   return (
     <div className="space-y-5">
+      {/* Modals */}
+      {stagingModal && (
+        <StagingModal
+          photoUrl={resolveUrl(stagingModal)}
+          userId={userId}
+          onResult={handleProcessResult.bind(null, stagingModal)}
+          onClose={() => setStagingModal(null)}
+        />
+      )}
+      {skyModal && (
+        <SkyModal
+          photoUrl={resolveUrl(skyModal)}
+          userId={userId}
+          onResult={handleProcessResult.bind(null, skyModal)}
+          onClose={() => setSkyModal(null)}
+        />
+      )}
+
       {/* Property summary */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
         <p className="text-white font-semibold text-sm leading-snug">{preview.title}</p>
@@ -101,6 +327,22 @@ function StepPhotos({ preview, selectedPhotos, setSelectedPhotos, onContinue, on
         </div>
       </div>
 
+      {/* Leyenda de herramientas */}
+      <div className="flex gap-3 flex-wrap">
+        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+          <Sparkles size={12} className="text-yellow-400" />
+          <span>Mejorar — balance de blancos, HDR, nitidez</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+          <Sofa size={12} className="text-yellow-400" />
+          <span>Staging — amuebla con IA (Replicate)</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+          <Sun size={12} className="text-yellow-400" />
+          <span>Cielo — reemplaza el cielo</span>
+        </div>
+      </div>
+
       {/* Photo grid */}
       <div>
         <div className="flex items-center justify-between mb-3">
@@ -108,7 +350,7 @@ function StepPhotos({ preview, selectedPhotos, setSelectedPhotos, onContinue, on
             Elegí las fotos <span className="text-yellow-400">({selectedPhotos.length}/{MAX} máx.)</span>
           </p>
           <div className="flex gap-3">
-            <button type="button" onClick={() => setSelectedPhotos(photos.slice(0, MAX))}
+            <button type="button" onClick={selectFirst}
               className="text-xs text-gray-500 hover:text-yellow-400 transition-colors">
               Primeras {Math.min(MAX, photos.length)}
             </button>
@@ -122,38 +364,98 @@ function StepPhotos({ preview, selectedPhotos, setSelectedPhotos, onContinue, on
         {photos.length === 0 ? (
           <p className="text-gray-500 text-sm">No se encontraron fotos en el listing.</p>
         ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-96 overflow-y-auto pr-1">
-            {photos.map((url, i) => {
-              const active = selectedPhotos.includes(url)
-              const order = active ? selectedPhotos.indexOf(url) + 1 : null
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[480px] overflow-y-auto pr-1">
+            {photos.map((origUrl, i) => {
+              const displayUrl = resolveUrl(origUrl)
+              const active = isSelected(origUrl)
+              const order = selectionOrder(origUrl)
+              const isProcessing = !!processingPhotos[origUrl]
+              const wasEnhanced = hasEnhancement(origUrl)
+
               return (
-                <button
+                <div
                   key={i}
-                  type="button"
-                  onClick={() => toggle(url)}
-                  className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${
+                  className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all group cursor-pointer ${
                     active ? 'border-yellow-400' : 'border-transparent hover:border-gray-500'
                   }`}
+                  onClick={() => toggle(origUrl)}
                 >
-                  <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                  {active && (
-                    <div className="absolute inset-0 bg-yellow-400/20" />
-                  )}
+                  {/* Foto */}
+                  <img
+                    src={displayUrl}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+
+                  {/* Overlay seleccionada */}
+                  {active && <div className="absolute inset-0 bg-yellow-400/15 pointer-events-none" />}
+
+                  {/* Número de orden */}
                   {active && order && (
-                    <div className="absolute top-1 left-1 w-5 h-5 rounded-full bg-yellow-400 text-gray-900 text-xs font-bold flex items-center justify-center">
+                    <div className="absolute top-1 left-1 w-5 h-5 rounded-full bg-yellow-400 text-gray-900 text-xs font-bold flex items-center justify-center pointer-events-none z-10">
                       {order}
                     </div>
                   )}
-                  {!active && selectedPhotos.length >= MAX && (
-                    <div className="absolute inset-0 bg-black/50" />
+
+                  {/* Indicador "mejorada" */}
+                  {wasEnhanced && (
+                    <div className="absolute bottom-1 left-1 bg-yellow-400 text-gray-900 text-[9px] font-bold px-1 rounded pointer-events-none z-10">
+                      IA
+                    </div>
                   )}
-                </button>
+
+                  {/* Límite alcanzado */}
+                  {!active && selectedPhotos.length >= MAX && (
+                    <div className="absolute inset-0 bg-black/50 pointer-events-none" />
+                  )}
+
+                  {/* Spinner de procesamiento */}
+                  {isProcessing && (
+                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-20">
+                      <Loader2 size={18} className="animate-spin text-yellow-400" />
+                    </div>
+                  )}
+
+                  {/* Botones de herramientas — aparecen al hover */}
+                  {!isProcessing && (
+                    <div className="absolute bottom-0 left-0 right-0 flex justify-around bg-black/80 py-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                      {/* Mejorar */}
+                      <button
+                        type="button"
+                        title="Mejorar foto (HDR, balance blancos, nitidez)"
+                        onClick={(e) => handleEnhance(e, origUrl)}
+                        className="text-yellow-400 hover:text-yellow-300 transition-colors p-0.5"
+                      >
+                        <Sparkles size={13} />
+                      </button>
+                      {/* Staging */}
+                      <button
+                        type="button"
+                        title="Home Staging Virtual (Replicate AI)"
+                        onClick={(e) => { e.stopPropagation(); setStagingModal(origUrl) }}
+                        className="text-yellow-400 hover:text-yellow-300 transition-colors p-0.5"
+                      >
+                        <Sofa size={13} />
+                      </button>
+                      {/* Cielo */}
+                      <button
+                        type="button"
+                        title="Reemplazar cielo"
+                        onClick={(e) => { e.stopPropagation(); setSkyModal(origUrl) }}
+                        className="text-yellow-400 hover:text-yellow-300 transition-colors p-0.5"
+                      >
+                        <Sun size={13} />
+                      </button>
+                    </div>
+                  )}
+                </div>
               )
             })}
           </div>
         )}
         <p className="text-xs text-gray-600 mt-2">
-          El orden de selección importa — la foto 1 se usa primero en los creativos.
+          Hover sobre cada foto para mejorarla con IA antes de usarla en los creativos.
         </p>
       </div>
 
@@ -596,6 +898,7 @@ export default function Generate() {
           setSelectedPhotos={setSelectedPhotos}
           onContinue={() => setStep(3)}
           onBack={() => setStep(1)}
+          userId={user?.id}
         />
       )}
 

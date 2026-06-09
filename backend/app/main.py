@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from app.core.database import connect_db, close_db
 from app.services.storage import init_cloudinary
-from app.api import generate, users, billing, leads
+from app.api import generate, users, billing, leads, photos
 
 STATIC_DIR = os.environ.get("STATIC_DIR", "/opt/inmogen/backend/static")
 
@@ -45,6 +45,7 @@ app.include_router(generate.router)
 app.include_router(users.router)
 app.include_router(billing.router)
 app.include_router(leads.router)
+app.include_router(photos.router)
 
 
 @app.get("/health")

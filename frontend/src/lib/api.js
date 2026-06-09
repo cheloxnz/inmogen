@@ -90,6 +90,26 @@ export async function getReferralInfo(userId) {
   return data
 }
 
+// ── Photo processing ─────────────────────────────────────────────────────────
+
+export async function enhancePhoto(userId, photoUrl) {
+  const api = createApi(userId)
+  const { data } = await api.post('/photos/enhance', { url: photoUrl })
+  return data // { url, original_url }
+}
+
+export async function replaceSky(userId, photoUrl, style = 'clear') {
+  const api = createApi(userId)
+  const { data } = await api.post('/photos/sky', { url: photoUrl, style })
+  return data // { url, original_url, style }
+}
+
+export async function stagePhoto(userId, photoUrl, roomType = 'living_room', style = 'modern') {
+  const api = createApi(userId)
+  const { data } = await api.post('/photos/stage', { url: photoUrl, room_type: roomType, style })
+  return data // { url, original_url, style, room_type }
+}
+
 export async function getPublicJob(jobId) {
   const { data } = await axios.get(`${API_BASE}/generate/${jobId}/share`)
   return data
