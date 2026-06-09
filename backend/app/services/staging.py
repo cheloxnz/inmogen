@@ -30,8 +30,8 @@ ROOM_PROMPTS = {
     "empty":       "beautifully furnished room",
 }
 
-# Modelo img2img de Stability AI — siempre disponible en Replicate
-REPLICATE_MODEL = "stability-ai/stable-diffusion-img2img:15a3689ee13b0d2616e98820eca31d4af4b36f754e6b15be740bc3b6edb5e4e5"
+# Modelo img2img — sin versión fija, se resuelve dinámicamente
+REPLICATE_MODEL = "stability-ai/stable-diffusion-img2img"
 
 
 async def virtual_stage(
@@ -74,9 +74,12 @@ async def virtual_stage(
     import replicate
     client = replicate.Client(api_token=settings.REPLICATE_API_TOKEN)
 
+    # Resolver la versión latest del modelo dinámicamente
+    model_with_version = await _resolve_model_version(REPLICATE_MODEL, settings.REPLICATE_API_TOKEN)
+
     def _run_sync():
         return client.run(
-            REPLICATE_MODEL,
+            model_with_version,
             input={
                 "image": img_url,
                 "prompt": prompt,
@@ -110,6 +113,24 @@ async def virtual_stage(
     # output puede ser FileOutput, URL string, o lista
     img_bytes = await _extract_output(output)
     return _to_jpeg(img_bytes)
+
+
+async def _resolve_model_version(model_name: str, token: str) -> str:
+    """Obtiene el ID de la versión más reciente del modelo desde la API de Replicate."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(
+            f"https://api.replicate.com/v1/models/{model_name}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        if r.status_code == 200:
+            data = r.json()
+            latest = (data.get("latest_version") or {}).get("id")
+            if latest:
+                logger.info("Replicate model %s → versión %s", model_name, latest[:12])
+                return f"{model_name}:{latest}"
+    # Fallback: usar sin versión (SDK elige la última)
+    logger.warning("No se pudo resolver versión de %s, usando sin hash", model_name)
+    return model_name
 
 
 async def _extract_output(output) -> bytes:
