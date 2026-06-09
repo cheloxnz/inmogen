@@ -1,6 +1,6 @@
 """
-Home Staging Virtual usando Replicate API.
-Modelo: adirik/interior-design — toma una foto de habitación y la amuebla.
+Home Staging Virtual usando Replicate API (SDK oficial).
+Modelo: stability-ai/stable-diffusion-img2img
 
 Requiere: REPLICATE_API_TOKEN en .env
 """
@@ -13,11 +13,11 @@ import httpx
 logger = logging.getLogger(__name__)
 
 STYLE_PROMPTS = {
-    "modern":       "modern minimalist furnished room, clean lines, neutral palette",
-    "scandinavian": "scandinavian style furnished room, white walls, light wood furniture, cozy",
-    "classic":      "classic elegant furnished room, warm tones, traditional decor",
-    "industrial":   "industrial loft style furnished room, exposed brick, metal accents",
-    "mediterranean": "mediterranean style furnished room, terracotta tones, natural materials",
+    "modern":        "modern minimalist furnished room, clean lines, neutral palette, white walls",
+    "scandinavian":  "scandinavian style furnished room, light wood furniture, cozy, white walls",
+    "classic":       "classic elegant furnished room, warm tones, traditional decor, luxury",
+    "industrial":    "industrial loft style furnished room, exposed brick, metal accents, modern",
+    "mediterranean": "mediterranean style furnished room, terracotta tones, natural materials, sunny",
 }
 
 ROOM_PROMPTS = {
@@ -26,12 +26,12 @@ ROOM_PROMPTS = {
     "kitchen":     "kitchen with appliances, island and dining area",
     "bathroom":    "modern bathroom with fixtures and towels",
     "dining":      "dining room with table and chairs",
-    "office":      "home office with desk and chair",
-    "empty":       "furnished room",
+    "office":      "home office with desk, chair and shelves",
+    "empty":       "beautifully furnished room",
 }
 
-# Modelo en Replicate para staging de interiores
-REPLICATE_MODEL = "adirik/interior-design"
+# Modelo img2img de Stability AI — siempre disponible en Replicate
+REPLICATE_MODEL = "stability-ai/stable-diffusion-img2img:15a3689ee13b0d2616e98820eca31d4af4b36f754e6b15be740bc3b6edb5e4e5"
 
 
 async def virtual_stage(
@@ -40,12 +40,12 @@ async def virtual_stage(
     style: str = "modern",
 ) -> bytes:
     """
-    Aplica home staging virtual a una foto de propiedad usando Replicate.
+    Aplica home staging virtual usando Replicate (stability-ai/stable-diffusion-img2img).
 
     Args:
         img_url: URL pública de la imagen original
-        room_type: Tipo de habitación (living_room, bedroom, kitchen, etc.)
-        style: Estilo de decoración (modern, scandinavian, classic, etc.)
+        room_type: Tipo de habitación
+        style: Estilo de decoración
 
     Returns:
         bytes de la imagen staged en JPEG
@@ -64,91 +64,83 @@ async def virtual_stage(
     prompt = (
         f"professional real estate interior photography, "
         f"{style_desc}, {room_desc}, "
-        f"bright natural light, high quality, photorealistic"
+        f"bright natural light, high quality, photorealistic, 8k"
     )
     negative_prompt = (
         "ugly, deformed, blurry, low quality, text, watermark, person, "
-        "cartoon, drawing, painting, anime, distorted"
+        "cartoon, drawing, painting, anime, distorted, empty room, bare walls"
     )
 
-    headers = {
-        "Authorization": f"Bearer {settings.REPLICATE_API_TOKEN}",
-        "Content-Type": "application/json",
-    }
+    import replicate
+    client = replicate.Client(api_token=settings.REPLICATE_API_TOKEN)
 
-    payload = {
-        "input": {
-            "image": img_url,
-            "prompt": prompt,
-            "negative_prompt": negative_prompt,
-            "num_inference_steps": 30,
-            "guidance_scale": 15,
-            "prompt_strength": 0.8,
-        }
-    }
+    def _run_sync():
+        return client.run(
+            REPLICATE_MODEL,
+            input={
+                "image": img_url,
+                "prompt": prompt,
+                "negative_prompt": negative_prompt,
+                "num_inference_steps": 30,
+                "guidance_scale": 12,
+                "prompt_strength": 0.75,
+                "scheduler": "DPMSolverMultistep",
+            }
+        )
 
-    async with httpx.AsyncClient(timeout=180) as client:
-        # 1. Crear predicción — con retry en 429
-        r = None
-        for attempt in range(5):
-            r = await client.post(
-                f"https://api.replicate.com/v1/models/{REPLICATE_MODEL}/predictions",
-                headers=headers,
-                json=payload,
+    # Ejecutar en thread para no bloquear el event loop
+    for attempt in range(4):
+        try:
+            output = await asyncio.wait_for(
+                asyncio.to_thread(_run_sync),
+                timeout=240,
             )
-            if r.status_code == 429:
-                try:
-                    retry_after = r.json().get("retry_after", 10)
-                except Exception:
-                    retry_after = 10
-                wait = int(retry_after) + 1
-                logger.info("Replicate 429 — esperando %ds antes de reintentar (intento %d/5)", wait, attempt + 1)
-                await asyncio.sleep(wait)
-                continue
             break
+        except Exception as e:
+            err_str = str(e)
+            if "429" in err_str or "throttled" in err_str or "rate limit" in err_str.lower():
+                wait = 15 * (attempt + 1)
+                logger.info("Replicate rate limit — esperando %ds (intento %d/4)", wait, attempt + 1)
+                await asyncio.sleep(wait)
+                if attempt == 3:
+                    raise Exception(f"Replicate rate limit persistente: {e}")
+                continue
+            raise
 
-        if r is None or r.status_code not in (200, 201):
-            raise Exception(f"Replicate error {r.status_code}: {r.text}")
+    # output puede ser FileOutput, URL string, o lista
+    img_bytes = await _extract_output(output)
+    return _to_jpeg(img_bytes)
 
-        pred = r.json()
-        pred_id = pred.get("id")
-        if not pred_id:
-            raise Exception(f"Replicate no devolvió ID de predicción: {pred}")
 
-        poll_url = f"https://api.replicate.com/v1/predictions/{pred_id}"
-        poll_headers = {"Authorization": f"Bearer {settings.REPLICATE_API_TOKEN}"}
+async def _extract_output(output) -> bytes:
+    """Extrae los bytes de imagen del output de Replicate (distintos formatos posibles)."""
+    # FileOutput con método read()
+    if hasattr(output, 'read'):
+        return output.read()
 
-        # 2. Polling hasta que termine
-        for attempt in range(90):  # max 90 × 2s = 3 minutos
-            await asyncio.sleep(2)
-            poll_r = await client.get(poll_url, headers=poll_headers)
-            poll_r.raise_for_status()
-            data = poll_r.json()
-            status = data.get("status")
+    # Lista de outputs (tomar el primero)
+    if isinstance(output, list) and len(output) > 0:
+        first = output[0]
+        if hasattr(first, 'read'):
+            return first.read()
+        if hasattr(first, 'url'):
+            url = str(first.url)
+        else:
+            url = str(first)
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.get(url)
+            r.raise_for_status()
+            return r.content
 
-            if status == "succeeded":
-                output = data.get("output")
-                output_url = output[0] if isinstance(output, list) else output
-                img_r = await client.get(str(output_url), timeout=60)
-                img_r.raise_for_status()
-                # Asegurar que devolvemos JPEG
-                img_bytes = img_r.content
-                return _to_jpeg(img_bytes)
-
-            elif status == "failed":
-                error = data.get("error", "desconocido")
-                raise Exception(f"Staging falló en Replicate: {error}")
-
-            elif status in ("canceled",):
-                raise Exception("Predicción cancelada en Replicate")
-
-            logger.debug("Staging attempt %d, status: %s", attempt, status)
-
-    raise Exception("Timeout: el staging tardó más de 3 minutos")
+    # URL directa (string o FileOutput con .url)
+    url = getattr(output, 'url', None) or str(output)
+    async with httpx.AsyncClient(timeout=60) as client:
+        r = await client.get(url)
+        r.raise_for_status()
+        return r.content
 
 
 def _to_jpeg(img_bytes: bytes) -> bytes:
-    """Convierte cualquier formato de imagen a JPEG."""
     from PIL import Image
     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
     out = io.BytesIO()
