@@ -88,13 +88,26 @@ async def virtual_stage(
     }
 
     async with httpx.AsyncClient(timeout=180) as client:
-        # 1. Crear predicción
-        r = await client.post(
-            f"https://api.replicate.com/v1/models/{REPLICATE_MODEL}/predictions",
-            headers=headers,
-            json=payload,
-        )
-        if r.status_code not in (200, 201):
+        # 1. Crear predicción — con retry en 429
+        r = None
+        for attempt in range(5):
+            r = await client.post(
+                f"https://api.replicate.com/v1/models/{REPLICATE_MODEL}/predictions",
+                headers=headers,
+                json=payload,
+            )
+            if r.status_code == 429:
+                try:
+                    retry_after = r.json().get("retry_after", 10)
+                except Exception:
+                    retry_after = 10
+                wait = int(retry_after) + 1
+                logger.info("Replicate 429 — esperando %ds antes de reintentar (intento %d/5)", wait, attempt + 1)
+                await asyncio.sleep(wait)
+                continue
+            break
+
+        if r is None or r.status_code not in (200, 201):
             raise Exception(f"Replicate error {r.status_code}: {r.text}")
 
         pred = r.json()
