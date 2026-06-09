@@ -82,11 +82,13 @@ class RegenerateRequest(BaseModel):
     fmt_name: str = "feed_1x1"
 
 
+ALL_FORMATS = ["feed_1x1", "story_9x16", "banner_16x9", "carousel_1", "carousel_2", "whatsapp"]
+
 class GenerateRequest(BaseModel):
     property_url: str
     brand: BrandConfig
     creative_slots: list[CreativeSlot] = [CreativeSlot(type="destacado")]
-    fmt_name: str = "feed_1x1"
+    fmt_name: str = "feed_1x1"   # Un formato específico, o "all" para todos
     selected_photos: list[str] | None = None
 
 
@@ -324,7 +326,11 @@ async def _process_job(job_id: str, req: GenerateRequest, x_user_id: str):
         slots = [s for s in req.creative_slots if s.type in VALID_TYPES]
         if not slots:
             slots = [CreativeSlot(type="destacado")]
-        fmt = req.fmt_name if req.fmt_name in VALID_FORMATS else "feed_1x1"
+
+        # Si fmt_name = "all", generar en todos los formatos
+        fmts = ALL_FORMATS if req.fmt_name == "all" else [
+            req.fmt_name if req.fmt_name in VALID_FORMATS else "feed_1x1"
+        ]
 
         await update({"status": "scraping"})
         prop = await scrape_property(req.property_url)
@@ -344,30 +350,36 @@ async def _process_job(job_id: str, req: GenerateRequest, x_user_id: str):
         urls = []
         fmt_entries = []
 
-        for i, slot in enumerate(slots):
-            ct = slot.type
-            entry = f"{ct}_{i}_{fmt}"
+        for fmt in fmts:
+            for i, slot in enumerate(slots):
+                ct = slot.type
+                entry = f"{ct}_{i}_{fmt}"
 
-            # Obtener fondo
-            if req.brand.gemini_api_key:
-                bgs = await generate_backgrounds(prop, req.brand, [ct], fmt)
-                bg_bytes = bgs.get(ct)
-            else:
-                bg_bytes = await pillow_creatives(prop, req.brand, [ct], fmt, slot_index=i)
-                bg_bytes = bg_bytes.get(ct)
+                # Obtener fondo
+                if req.brand.gemini_api_key:
+                    bgs = await generate_backgrounds(prop, req.brand, [ct], fmt)
+                    bg_bytes = bgs.get(ct)
+                else:
+                    bg_bytes = await pillow_creatives(prop, req.brand, [ct], fmt, slot_index=i)
+                    bg_bytes = bg_bytes.get(ct)
 
-            if not bg_bytes:
-                continue
+                if not bg_bytes:
+                    continue
 
-            img_bytes = apply_overlay(bg_bytes, logo_img, req.brand, prop, ct, fmt, custom_text=slot.custom_text)
-            url = await _save_image(img_bytes, job_id, entry)
-            urls.append(url)
-            fmt_entries.append(entry)
-            await db.jobs.update_one(
-                {"_id": oid},
-                {"$set": {"creatives": urls, "creatives_fmt": fmt_entries,
-                          "updated_at": datetime.utcnow()}}
-            )
+                img_bytes = apply_overlay(
+                    bg_bytes, logo_img, req.brand, prop, ct, fmt,
+                    custom_text=slot.custom_text,
+                    slide_index=i if fmt in ("carousel_1", "carousel_2") else None,
+                    slide_total=len(slots) if fmt in ("carousel_1", "carousel_2") else None,
+                )
+                url = await _save_image(img_bytes, job_id, entry)
+                urls.append(url)
+                fmt_entries.append(entry)
+                await db.jobs.update_one(
+                    {"_id": oid},
+                    {"$set": {"creatives": urls, "creatives_fmt": fmt_entries,
+                              "updated_at": datetime.utcnow()}}
+                )
 
         await db.users.update_one({"clerk_id": x_user_id}, {"$inc": {"credits": -1}})
         await update({

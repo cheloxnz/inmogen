@@ -16,7 +16,7 @@ async function downloadImage(url, filename) {
   }
 }
 import toast from 'react-hot-toast'
-import { startGeneration, pollJob, getMe, scrapePreview, regenerateSlot, enhancePhoto, replaceSky, stagePhoto } from '../lib/api'
+import { startGeneration, pollJob, getMe, scrapePreview, regenerateSlot, enhancePhoto, replaceSky, stagePhoto, generateVideoFromJob } from '../lib/api'
 
 const STATUS_LABELS = {
   pending: 'En cola...',
@@ -546,8 +546,22 @@ function StepConfig({ fmt, setFmt, slots, setSlots, selectedPhotos, onGenerate, 
 
       {/* Formato */}
       <div>
-        <p className="text-sm font-medium text-gray-300 mb-3">Formato de salida</p>
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-medium text-gray-300">Formato de salida</p>
+          <button
+            type="button"
+            onClick={() => setFmt(fmt === 'all' ? 'feed_1x1' : 'all')}
+            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-all ${
+              fmt === 'all'
+                ? 'border-yellow-400 bg-yellow-400/10 text-yellow-400'
+                : 'border-gray-700 text-gray-400 hover:border-gray-500'
+            }`}
+          >
+            <Zap size={11} />
+            {fmt === 'all' ? '✓ Todos los formatos' : 'Generar todos'}
+          </button>
+        </div>
+        <div className={`grid grid-cols-3 sm:grid-cols-6 gap-2 transition-opacity ${fmt === 'all' ? 'opacity-40 pointer-events-none' : ''}`}>
           {FORMAT_OPTIONS.map(f => (
             <button key={f.id} type="button" onClick={() => setFmt(f.id)}
               className={`p-2.5 rounded-xl border text-center transition-all ${
@@ -559,6 +573,11 @@ function StepConfig({ fmt, setFmt, slots, setSlots, selectedPhotos, onGenerate, 
             </button>
           ))}
         </div>
+        {fmt === 'all' && (
+          <p className="text-xs text-yellow-400/70 mt-2">
+            Se generarán {FORMAT_OPTIONS.length} versiones por ángulo — 1 crédito total
+          </p>
+        )}
       </div>
 
       {/* Slots */}
@@ -662,6 +681,8 @@ export default function Generate() {
   const [regenerating, setRegenerating] = useState({})
   const [addingMore, setAddingMore] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [generatingVideo, setGeneratingVideo] = useState(false)
+  const [videoModal, setVideoModal] = useState(false)
   const [credits, setCredits] = useState(null)
   const [brand, setBrand] = useState(null)
 
@@ -828,13 +849,103 @@ export default function Generate() {
   }
 
   const isRunning = job && !['done', 'error'].includes(job.status)
+
+  async function handleGenerateVideo(videoFmt, videoStyle, videoDuration) {
+    if (!job?.id || generatingVideo) return
+    setGeneratingVideo(true)
+    setVideoModal(false)
+    const toastId = toast.loading('Generando video... puede tardar 1-2 min')
+    try {
+      const blob = await generateVideoFromJob(userId, job.id, videoFmt, videoStyle, videoDuration)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `inmogen_${job.id.slice(0, 8)}_${videoFmt}_${videoStyle}.mp4`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('¡Video listo! Descargando...', { id: toastId })
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Error generando el video', { id: toastId })
+    } finally {
+      setGeneratingVideo(false)
+    }
+  }
   const total = slots.length
 
   // Step indicators
   const steps = ['URL', 'Fotos', 'Generar']
 
+  // ── Video Modal ──────────────────────────────────────────────────────────
+  function VideoModal() {
+    const [vFmt, setVFmt] = useState('story_9x16')
+    const [vStyle, setVStyle] = useState('kenburns')
+    const [vDur, setVDur] = useState(4)
+    const vFormats = [
+      { id: 'story_9x16',  label: 'Story 9:16',  sub: 'Reels / Stories' },
+      { id: 'feed_1x1',    label: 'Feed 1:1',     sub: 'Instagram / FB' },
+      { id: 'banner_16x9', label: 'Banner 16:9',  sub: 'Facebook Ads' },
+    ]
+    const vStyles = [
+      { id: 'kenburns',  label: 'Ken Burns',  desc: 'Zoom + paneo cinematográfico' },
+      { id: 'slideshow', label: 'Slideshow',  desc: 'Fade suave entre fotos' },
+    ]
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setVideoModal(false)}>
+        <div className="bg-gray-900 border border-gray-700 rounded-2xl p-5 w-full max-w-sm space-y-4" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between">
+            <h3 className="text-white font-semibold text-sm flex items-center gap-2">
+              <Zap size={16} className="text-purple-400" /> Generar Video Inmobiliario
+            </h3>
+            <button onClick={() => setVideoModal(false)} className="text-gray-500 hover:text-white text-lg">×</button>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 mb-2">Formato</p>
+            <div className="grid grid-cols-3 gap-2">
+              {vFormats.map(f => (
+                <button key={f.id} type="button" onClick={() => setVFmt(f.id)}
+                  className={`p-2 rounded-lg border text-center transition-all ${vFmt === f.id ? 'border-purple-400 bg-purple-400/10 text-purple-400' : 'border-gray-700 text-gray-400 hover:border-gray-500'}`}>
+                  <div className="text-xs font-semibold">{f.label}</div>
+                  <div className="text-[10px] text-gray-500">{f.sub}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 mb-2">Estilo</p>
+            <div className="grid grid-cols-2 gap-2">
+              {vStyles.map(s => (
+                <button key={s.id} type="button" onClick={() => setVStyle(s.id)}
+                  className={`p-2.5 rounded-lg border text-left transition-all ${vStyle === s.id ? 'border-purple-400 bg-purple-400/10' : 'border-gray-700 hover:border-gray-500'}`}>
+                  <div className={`text-xs font-semibold ${vStyle === s.id ? 'text-purple-400' : 'text-white'}`}>{s.label}</div>
+                  <div className="text-[10px] text-gray-500 mt-0.5">{s.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 mb-2">Duración por foto: <span className="text-white font-semibold">{vDur}s</span></p>
+            <input type="range" min={2} max={8} step={1} value={vDur} onChange={e => setVDur(+e.target.value)}
+              className="w-full accent-purple-400" />
+            <div className="flex justify-between text-[10px] text-gray-600 mt-1"><span>2s</span><span>8s</span></div>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleGenerateVideo(vFmt, vStyle, vDur)}
+            className="w-full py-2.5 bg-purple-500 text-white font-semibold rounded-xl hover:bg-purple-400 transition-colors text-sm flex items-center justify-center gap-2"
+          >
+            <Zap size={14} /> Generar MP4
+          </button>
+          <p className="text-[10px] text-gray-600 text-center">Requiere FFmpeg en el servidor · ~1-2 minutos</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="p-8 max-w-3xl mx-auto">
+
+      {/* Video modal */}
+      {videoModal && <VideoModal />}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
@@ -1030,6 +1141,15 @@ export default function Generate() {
                       }}
                       className="flex items-center gap-2 px-4 py-2.5 border border-gray-700 text-gray-400 rounded-xl hover:border-blue-400 hover:text-blue-400 transition-colors text-sm">
                       <Share2 size={14} /> Compartir
+                    </button>
+                    <button
+                      onClick={() => setVideoModal(true)}
+                      disabled={generatingVideo}
+                      className="flex items-center gap-2 px-4 py-2.5 border border-gray-700 text-gray-400 rounded-xl hover:border-purple-400 hover:text-purple-400 transition-colors text-sm disabled:opacity-50">
+                      {generatingVideo
+                        ? <><Loader2 size={14} className="animate-spin" /> Generando video...</>
+                        : <><Zap size={14} /> Video Ken Burns</>
+                      }
                     </button>
                     {job.zip_url && (
                       <a href={job.zip_url}

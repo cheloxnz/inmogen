@@ -593,6 +593,8 @@ def apply_overlay(
     creative_type: str,
     fmt_name: str,
     custom_text: str = "",
+    slide_index: int | None = None,
+    slide_total: int | None = None,
 ) -> bytes:
     w, h = FORMATS.get(fmt_name, (1080, 1080))
     bg = Image.open(BytesIO(bg_bytes)).convert("RGBA")
@@ -605,6 +607,31 @@ def apply_overlay(
     else:
         result = fn(bg, logo, brand, prop, w, h)
 
+    # Slide counter para formatos carrusel
+    if fmt_name in ("carousel_1", "carousel_2") and slide_index is not None and slide_total:
+        result = _draw_slide_counter(result, slide_index, slide_total, w, h)
+
     buf = BytesIO()
     result.save(buf, format="JPEG", quality=93, optimize=True)
     return buf.getvalue()
+
+
+def _draw_slide_counter(img: Image.Image, index: int, total: int, w: int, h: int) -> Image.Image:
+    """Dibuja '1 / 5' en la esquina superior derecha para slides de carrusel."""
+    from PIL import ImageDraw, ImageFont
+    sc = min(w, h)
+    font_size = max(22, sc // 45)
+    font = _load_font(font_size)
+    draw = ImageDraw.Draw(img)
+    text = f"{index + 1} / {total}"
+    # Fondo pill
+    bbox = draw.textbbox((0, 0), text, font=font)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    pad = sc // 60
+    rx1 = w - tw - pad * 3
+    ry1 = pad * 2
+    rx2 = w - pad
+    ry2 = ry1 + th + pad * 2
+    draw.rounded_rectangle([rx1, ry1, rx2, ry2], radius=sc // 80, fill=(0, 0, 0, 160))
+    draw.text((rx1 + pad, ry1 + pad), text, font=font, fill=(255, 255, 255, 220))
+    return img

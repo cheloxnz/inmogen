@@ -90,6 +90,24 @@ export async function getReferralInfo(userId) {
   return data
 }
 
+// ── Video generation ─────────────────────────────────────────────────────────
+
+export async function generateVideoFromJob(userId, jobId, fmt = 'story_9x16', style = 'kenburns', duration = 4) {
+  const api = createApi(userId)
+  const response = await api.post('/videos/generate', {
+    job_id: jobId, fmt, style, duration_per_photo: duration,
+  }, { responseType: 'blob' })
+  return response.data // Blob MP4
+}
+
+export async function generateVideoFromUrls(userId, photoUrls, fmt = 'story_9x16', style = 'kenburns', duration = 4) {
+  const api = createApi(userId)
+  const response = await api.post('/videos/from-urls', {
+    photo_urls: photoUrls, fmt, style, duration_per_photo: duration,
+  }, { responseType: 'blob' })
+  return response.data // Blob MP4
+}
+
 // ── Photo processing ─────────────────────────────────────────────────────────
 
 export async function enhancePhoto(userId, photoUrl) {
