@@ -52,8 +52,8 @@ async def generate_video(
     w, h = dims
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # 1. Descargar y redimensionar fotos
-        photo_paths = await _download_photos(photo_urls[:10], tmpdir, w, h)
+        # 1. Descargar y redimensionar fotos (máx 7 para mantener video < 2min)
+        photo_paths = await _download_photos(photo_urls[:7], tmpdir, w, h)
 
         if not photo_paths:
             raise Exception("No se pudieron descargar las fotos para el video")
@@ -235,7 +235,7 @@ def _crop_center(img: Image.Image, target_w: int, target_h: int) -> Image.Image:
     return img.crop((left, top, left + target_w, top + target_h))
 
 
-async def _run_ffmpeg(cmd: list[str], timeout: int = 180):
+async def _run_ffmpeg(cmd: list[str], timeout: int = 240):
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
