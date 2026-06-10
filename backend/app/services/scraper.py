@@ -196,6 +196,12 @@ def _is_property_photo(url: str) -> bool:
         "1x1", "blank", "loading", "favicon", "badge", "star", "rating",
         "googletagmanager", "doubleclick", "googlesyndication", "adsense",
         "gstatic.com/maps", "staticmap",
+        # Thumbnails / posters de videos
+        "video", "thumb-video", "videothumb", "poster", "video_thumbnail",
+        "video-thumbnail", "videothumbnail", "video_poster",
+        "/video/", "/videos/", "youtube.com", "youtu.be", "vimeo.com",
+        # Imágenes de tamaño mínimo (1px, badges)
+        "1px", "spacer",
     ]
     if any(b in url_lower for b in bad):
         return False

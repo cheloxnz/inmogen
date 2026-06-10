@@ -236,6 +236,8 @@ function StepPhotos({ preview, selectedPhotos, setSelectedPhotos, onContinue, on
   const [photoOverrides, setPhotoOverrides] = useState({})
   // processingPhotos: { url → 'enhancing' | true }
   const [processingPhotos, setProcessingPhotos] = useState({})
+  // brokenPhotos: set de URLs que fallaron al cargar (negras / 404)
+  const [brokenPhotos, setBrokenPhotos] = useState(new Set())
   // Staging modal state
   const [stagingModal, setStagingModal] = useState(null) // url or null
   const [skyModal, setSkyModal] = useState(null)         // url or null
@@ -289,9 +291,9 @@ function StepPhotos({ preview, selectedPhotos, setSelectedPhotos, onContinue, on
 
   const hasEnhancement = (url) => !!photoOverrides[url]
 
-  // Primeras N fotos para selección rápida (usando URLs resueltas)
+  // Primeras N fotos para selección rápida (usando URLs resueltas, excluyendo rotas)
   function selectFirst() {
-    const resolved = photos.slice(0, MAX).map(resolveUrl)
+    const resolved = photos.filter(u => !brokenPhotos.has(u)).slice(0, MAX).map(resolveUrl)
     setSelectedPhotos(resolved)
   }
 
@@ -367,7 +369,7 @@ function StepPhotos({ preview, selectedPhotos, setSelectedPhotos, onContinue, on
           <p className="text-gray-500 text-sm">No se encontraron fotos en el listing.</p>
         ) : (
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[480px] overflow-y-auto pr-1">
-            {photos.map((origUrl, i) => {
+            {photos.filter(u => !brokenPhotos.has(u)).map((origUrl, i) => {
               const displayUrl = resolveUrl(origUrl)
               const active = isSelected(origUrl)
               const order = selectionOrder(origUrl)
@@ -388,6 +390,11 @@ function StepPhotos({ preview, selectedPhotos, setSelectedPhotos, onContinue, on
                     alt=""
                     className="w-full h-full object-cover"
                     loading="lazy"
+                    onError={() => {
+                      setBrokenPhotos(prev => new Set([...prev, origUrl]))
+                      // Quitar de seleccionadas si estaba elegida
+                      setSelectedPhotos(prev => prev.filter(u => u !== resolveUrl(origUrl)))
+                    }}
                   />
 
                   {/* Overlay seleccionada */}
