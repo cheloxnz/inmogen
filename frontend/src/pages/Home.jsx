@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { SignInButton, SignUpButton, useAuth } from '@clerk/clerk-react'
 import { Navigate, useSearchParams } from 'react-router-dom'
-import { Zap, Clock, Palette, Download, Image, RefreshCw, Sparkles, ChevronRight, Star, Check } from 'lucide-react'
+import { Zap, Clock, Palette, Download, Image, RefreshCw, Sparkles, ChevronRight, Star, Check, Video, Sofa, Sun, Chrome, Layers } from 'lucide-react'
 import { PricingModal } from './Pricing'
 
 export default function Home() {
@@ -140,6 +140,36 @@ export default function Home() {
               title: 'Historial completo',
               desc: 'Todos tus jobs guardados con thumbnails. Volvé a descargar cualquier imagen cuando quieras.',
             },
+            {
+              icon: <Sparkles className="text-yellow-400" size={22} />,
+              title: 'Mejora de fotos con IA',
+              desc: 'Balance de blancos automático, HDR, nitidez y saturación. Una foto oscura o plana se convierte en imagen de revista.',
+            },
+            {
+              icon: <Sofa className="text-yellow-400" size={22} />,
+              title: 'Home Staging Virtual',
+              desc: 'Amueblá una habitación vacía con IA en segundos. 5 estilos (moderno, escandinavo, minimalista…) y 6 tipos de ambiente.',
+            },
+            {
+              icon: <Sun className="text-yellow-400" size={22} />,
+              title: 'Reemplazo de cielo',
+              desc: 'Cambiá un cielo gris por uno despejado, de atardecer, dorado o nublado. Ideal para exteriores y terrazas.',
+            },
+            {
+              icon: <Video className="text-yellow-400" size={22} />,
+              title: 'Video para Reels y Stories',
+              desc: 'Generá un video MP4 con las fotos de la propiedad y transiciones cinematográficas. Listo para subir a Instagram en segundos.',
+            },
+            {
+              icon: <Layers className="text-yellow-400" size={22} />,
+              title: 'Todos los formatos de una',
+              desc: 'Activá "Generar todos" y obtenés los 6 formatos al mismo tiempo: 1:1, Story, Banner, Carrusel x2 y WhatsApp. Un solo crédito.',
+            },
+            {
+              icon: <Chrome className="text-yellow-400" size={22} />,
+              title: 'Extensión para Chrome',
+              desc: 'Navegás por Zonaprop, Argenprop o Idealista y con un click enviás la propiedad a InmoGen. Sin copiar ni pegar.',
+            },
           ].map(f => (
             <div key={f.title} className="bg-gray-900 border border-gray-800 rounded-2xl p-5 hover:border-gray-700 transition-colors">
               <div className="mb-3">{f.icon}</div>
@@ -192,6 +222,63 @@ export default function Home() {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* IA Tools highlight */}
+      <section className="max-w-5xl mx-auto px-8 pb-20">
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center gap-2 bg-purple-500/10 border border-purple-500/30 rounded-full px-4 py-1.5 text-purple-400 text-sm mb-4">
+            <Sparkles size={13} />
+            Herramientas de IA exclusivas
+          </div>
+          <h2 className="text-3xl font-bold mb-3">Transformá las fotos antes de generar</h2>
+          <p className="text-gray-500 text-sm max-w-xl mx-auto">Mejorá, amueblá y renová cada imagen directamente en el selector de fotos. Sin salir de InmoGen.</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
+          {[
+            {
+              emoji: '✨',
+              color: 'yellow',
+              title: 'Auto-mejora',
+              desc: 'Corrección de color, niveles, contraste y nitidez automáticos. Un click convierte una foto mediocre en imagen profesional.',
+              tag: 'Gratis incluido',
+            },
+            {
+              emoji: '🛋️',
+              color: 'purple',
+              title: 'Home Staging Virtual',
+              desc: 'Usá tu API Key de Replicate para amueblar ambientes vacíos con IA. 30 combinaciones de estilo × ambiente.',
+              tag: 'Requiere Replicate API',
+            },
+            {
+              emoji: '☀️',
+              color: 'blue',
+              title: 'Reemplazo de cielo',
+              desc: 'Cielo despejado, atardecer, dorado o nublado. Detección automática del cielo y reemplazo con gradiente realista.',
+              tag: 'Gratis incluido',
+            },
+          ].map(item => (
+            <div key={item.title} className="bg-gray-900 border border-gray-800 rounded-2xl p-6 hover:border-gray-700 transition-colors">
+              <div className="text-4xl mb-4">{item.emoji}</div>
+              <div className="inline-block text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 mb-3">{item.tag}</div>
+              <h3 className="font-bold text-lg mb-2">{item.title}</h3>
+              <p className="text-gray-400 text-sm leading-relaxed">{item.desc}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Replicate CTA */}
+        <div className="bg-gradient-to-r from-purple-900/40 to-gray-900 border border-purple-500/30 rounded-2xl p-6 flex flex-col sm:flex-row items-center gap-5">
+          <div className="flex-1">
+            <p className="text-purple-400 text-xs font-semibold uppercase tracking-wide mb-1">Home Staging Virtual</p>
+            <h3 className="text-white font-bold text-lg mb-1">Usá tu propia API Key de Replicate</h3>
+            <p className="text-gray-400 text-sm">Conectás tu token en Configuración de Marca y cada foto de ambiente vacío se amuebla automáticamente con IA. El costo va a tu propia cuenta de Replicate.</p>
+          </div>
+          <a href="https://replicate.com/account/api-tokens" target="_blank" rel="noopener noreferrer"
+            className="flex-shrink-0 px-5 py-2.5 bg-purple-500 hover:bg-purple-400 text-white text-sm font-semibold rounded-xl transition-colors">
+            Obtener API Key →
+          </a>
         </div>
       </section>
 
