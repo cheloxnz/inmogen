@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { SignInButton, SignUpButton, useAuth } from '@clerk/clerk-react'
 import { Navigate, useSearchParams } from 'react-router-dom'
-import { Zap, Clock, Palette, Download, Image, RefreshCw, Sparkles, ChevronRight, Star, Check, Video, Sofa, Sun, Chrome, Layers } from 'lucide-react'
+import { Zap, Clock, Palette, Download, Image, RefreshCw, Sparkles, ChevronRight, Star, Check, Video, Sofa, Sun, Globe, Layers } from 'lucide-react'
 import { PricingModal } from './Pricing'
 
 export default function Home() {
@@ -166,7 +166,7 @@ export default function Home() {
               desc: 'Activá "Generar todos" y obtenés los 6 formatos al mismo tiempo: 1:1, Story, Banner, Carrusel x2 y WhatsApp. Un solo crédito.',
             },
             {
-              icon: <Chrome className="text-yellow-400" size={22} />,
+              icon: <Globe className="text-yellow-400" size={22} />,
               title: 'Extensión para Chrome',
               desc: 'Navegás por Zonaprop, Argenprop o Idealista y con un click enviás la propiedad a InmoGen. Sin copiar ni pegar.',
             },
