@@ -392,8 +392,27 @@ function StepPhotos({ preview, selectedPhotos, setSelectedPhotos, onContinue, on
                     loading="lazy"
                     onError={() => {
                       setBrokenPhotos(prev => new Set([...prev, origUrl]))
-                      // Quitar de seleccionadas si estaba elegida
                       setSelectedPhotos(prev => prev.filter(u => u !== resolveUrl(origUrl)))
+                    }}
+                    onLoad={e => {
+                      // Detectar imágenes casi negras usando canvas
+                      try {
+                        const img = e.currentTarget
+                        const canvas = document.createElement('canvas')
+                        canvas.width = 16; canvas.height = 16
+                        const ctx = canvas.getContext('2d')
+                        ctx.drawImage(img, 0, 0, 16, 16)
+                        const data = ctx.getImageData(0, 0, 16, 16).data
+                        let total = 0
+                        for (let i = 0; i < data.length; i += 4) {
+                          total += (data[i] + data[i+1] + data[i+2]) / 3
+                        }
+                        const avgBrightness = total / (data.length / 4)
+                        if (avgBrightness < 15) { // casi negro (<6% de brillo)
+                          setBrokenPhotos(prev => new Set([...prev, origUrl]))
+                          setSelectedPhotos(prev => prev.filter(u => u !== resolveUrl(origUrl)))
+                        }
+                      } catch { /* cross-origin canvas, ignorar */ }
                     }}
                   />
 
