@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useUser } from '@clerk/clerk-react'
 import { Link } from 'react-router-dom'
 import { Link2, Loader2, CheckCircle, XCircle, Download, Search, ChevronRight, RefreshCw, Share2, Zap, Sparkles, Sun, Sofa } from 'lucide-react'
@@ -715,6 +715,35 @@ export default function Generate() {
   const [videoModal, setVideoModal] = useState(false)
   const [credits, setCredits] = useState(null)
   const [brand, setBrand] = useState(null)
+
+  // Leer ?url= de la query string (viene desde la extensión Chrome)
+  const autoScrapeUrl = useRef(null)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const urlParam = params.get('url')
+    if (urlParam) {
+      setUrl(urlParam)
+      autoScrapeUrl.current = urlParam
+      // Limpiar la query string sin recargar la página
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
+
+  // Auto-scrape cuando viene de la extensión y ya cargó el userId
+  useEffect(() => {
+    if (!autoScrapeUrl.current || !userId) return
+    const targetUrl = autoScrapeUrl.current
+    autoScrapeUrl.current = null // evitar doble disparo
+    setLoading(true)
+    scrapePreview(userId, targetUrl.trim())
+      .then(data => {
+        setPreview(data)
+        setSelectedPhotos((data.photos || []).slice(0, 7))
+        setStep(2)
+      })
+      .catch(err => toast.error(err.response?.data?.detail || 'No se pudo procesar la URL', { duration: 5000 }))
+      .finally(() => setLoading(false))
+  }, [userId])
 
   useEffect(() => {
     if (userId) getMe(userId).then(u => { setCredits(u.credits); if (u.brand) setBrand(u.brand) })
